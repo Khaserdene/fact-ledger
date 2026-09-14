@@ -16,6 +16,36 @@ E:\profiling_facts\start.bat
 
 ---
 
+## 📦 Шинээр суулгах (clone-оос)
+
+```bat
+:: 1. Clone
+git clone https://github.com/Khaserdene/fact-ledger.git
+cd fact-ledger
+
+:: 2. Backend — venv үүсгэж хамаарлууд суулгах
+cd backend
+python -m venv venv
+venv\Scripts\pip install -r requirements.txt
+
+:: 3. Орчны тохиргоо (заавал биш — AI_PROVIDER=manual defaults ажилладаг)
+copy .env.example .env
+
+:: 4. Өгөгдлийн сан — repo-д бэлэн profiling_facts.db орсон тул
+::    alembic шаардлагагүй. Хэрвээ хоосон эхлэх бол:
+::    venv\Scripts\python -m alembic upgrade head
+
+:: 5. Асаах
+start "API" venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8020
+cd ..\frontend
+npm install
+npm run dev
+```
+
+Frontend: http://localhost:5200 · API: http://127.0.0.1:8020/docs
+
+---
+
 ## 🛠 Гараар асаах
 
 ### Шаардлага

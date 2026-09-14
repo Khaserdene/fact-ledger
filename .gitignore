@@ -4,17 +4,12 @@ backend/__pycache__/
 backend/**/__pycache__/
 *.pyc
 
-# Өгөгдлийн сан ба нөөц (локал датаг repo-д оруулахгүй)
-backend/profiling_facts.db
-backend/backups/
-
 # Node / build
 frontend/node_modules/
 frontend/dist/
 
-# Орчин
-.env
-*.log
+# Нууцлагдсан орчны файл (ANGILAL: .env.example ашиглана)
+backend/.env
 
 # Түр файлууд
 tools/*.txt
