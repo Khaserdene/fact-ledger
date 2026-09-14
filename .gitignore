@@ -1,0 +1,26 @@
+# Python
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+*.pyc
+
+# Өгөгдлийн сан ба нөөц (локал датаг repo-д оруулахгүй)
+backend/profiling_facts.db
+backend/backups/
+
+# Node / build
+frontend/node_modules/
+frontend/dist/
+
+# Орчин
+.env
+*.log
+
+# Түр файлууд
+tools/*.txt
+tools/ministers_log*.txt
+
+# ЗCode/агентийн локал файлууд
+.zcode/
+.agents/
+.claude/

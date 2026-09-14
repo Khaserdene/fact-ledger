@@ -1,0 +1,233 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter"; /* кирилл subset-ээ агуулдаг */
+@import "@fontsource/unbounded";
+@import "@fontsource/unbounded/cyrillic-500.css";
+@import "@fontsource/unbounded/cyrillic-700.css";
+@import "@fontsource/jetbrains-mono";
+@import "@fontsource/jetbrains-mono/cyrillic-400.css";
+@import "@fontsource/jetbrains-mono/cyrillic-700.css";
+
+/*
+ * Үнэний Бүртгэл — "Intel Terminal" загварын систем.
+ * Гүн хар терминаль суурь + phosphor cyan акцент + mono өгөгдлийн хэв.
+ */
+@theme {
+  /* Суурь — terminal ink давхаргууд */
+  --color-ink-950: #04070a;
+  --color-ink-900: #070c11;
+  --color-ink-800: #0b131b;
+  --color-ink-700: #111c27;
+
+  /* Шилэн гадаргуу ба зураас */
+  --color-surface: rgb(56 224 255 / 0.03);
+  --color-surface-2: rgb(56 224 255 / 0.06);
+  --color-surface-3: rgb(56 224 255 / 0.1);
+  --color-line: rgb(56 224 255 / 0.12);
+  --color-line-strong: rgb(56 224 255 / 0.26);
+
+  /* Текст */
+  --color-text: #d7e7ee;
+  --color-dim: #7c93a3;
+  --color-faint: #4a5d6d;
+
+  /* Акцент — phosphor cyan */
+  --color-accent: #38e0ff;
+  --color-accent-bright: #7deeff;
+  --color-accent-dim: rgb(56 224 255 / 0.12);
+  --color-accent-line: rgb(56 224 255 / 0.38);
+
+  /* Семантик */
+  --color-danger: #ff5464;
+  --color-danger-dim: rgb(255 84 100 / 0.12);
+  --color-ok: #34e28a;
+  --color-ok-dim: rgb(52 226 138 / 0.12);
+  --color-warn: #ffb224;
+  --color-warn-dim: rgb(255 178 36 / 0.12);
+
+  /* Фонт */
+  --font-display: "Unbounded", "Inter Variable", system-ui, sans-serif;
+  --font-sans: "Inter Variable", Inter, system-ui, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+
+  --radius-card: 10px;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: var(--color-ink-950);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgb(56 224 255 / 0.05), transparent),
+    radial-gradient(ellipse 60% 40% at 90% 110%, rgb(52 226 138 / 0.03), transparent),
+    linear-gradient(rgb(56 224 255 / 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(56 224 255 / 0.025) 1px, transparent 1px);
+  background-size: auto, auto, 44px 44px, 44px 44px;
+  background-attachment: fixed;
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@layer components {
+  /* Тунгалаг панел */
+  .glass {
+    background: var(--color-surface);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-card);
+  }
+
+  .glass-strong {
+    background: rgb(7 12 17 / 0.82);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-card);
+  }
+
+  /* Терминал гарчигт — mono uppercase, cyan glow */
+  .terminal-label {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+    text-shadow: 0 0 12px var(--color-accent-line);
+  }
+
+  /* Мета өгөгдөл — hash, ID, огноо */
+  .data-label {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    color: var(--color-faint);
+  }
+
+  /* Хулганы доор гэрэлтэх интерактив мөр */
+  .hover-glow {
+    transition: box-shadow 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
+  }
+  .hover-glow:hover {
+    border-color: var(--color-accent-line);
+    box-shadow: 0 0 0 1px var(--color-accent-dim), 0 0 24px rgb(56 224 255 / 0.08);
+  }
+
+  /* Картын булангийн кронштейн marker */
+  .bracket-frame {
+    position: relative;
+  }
+  .bracket-frame::before,
+  .bracket-frame::after {
+    content: "";
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    pointer-events: none;
+    border-color: var(--color-accent-line);
+    border-style: solid;
+  }
+  .bracket-frame::before {
+    top: -1px;
+    left: -1px;
+    border-width: 1px 0 0 1px;
+    border-top-left-radius: var(--radius-card);
+  }
+  .bracket-frame::after {
+    bottom: -1px;
+    right: -1px;
+    border-width: 0 1px 1px 0;
+    border-bottom-right-radius: var(--radius-card);
+  }
+}
+
+/* ── Фактын тодруулга (нийтлэл дотор) ── */
+.fact-highlight {
+  border-bottom: 2px solid var(--color-accent);
+  background-color: var(--color-accent-dim);
+  border-radius: 2px;
+  cursor: pointer;
+  position: relative;
+  display: inline;
+}
+
+.fact-highlight.contradiction {
+  border-bottom-color: var(--color-danger);
+  background-color: var(--color-danger-dim);
+}
+
+/* Tooltip */
+.fact-tooltip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  width: 300px;
+  background: var(--color-ink-800);
+  backdrop-filter: blur(18px);
+  border: 1px solid var(--color-line-strong);
+  color: var(--color-text);
+  font-size: 0.75rem;
+  padding: 10px 12px;
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.5);
+  pointer-events: none;
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
+.fact-highlight:hover .fact-tooltip {
+  display: block;
+}
+
+/* ── Difflib (эх сурвалж тулгах) ── */
+.diff-container table { width: 100%; border-collapse: collapse; }
+.diff-container td { padding: 2px 4px; border: 1px solid var(--color-line); vertical-align: top; }
+.diff-container .diff_add { background-color: var(--color-ok-dim); color: var(--color-text); }
+.diff-container .diff_sub { background-color: var(--color-danger-dim); color: var(--color-text); }
+.diff-container .diff_chg { background-color: var(--color-accent-dim); color: var(--color-text); }
+.diff-container .diff_header {
+  background-color: var(--color-surface-2);
+  text-align: center;
+  color: var(--color-faint);
+  font-size: 0.7rem;
+  width: 30px;
+}
+
+/* ── Knowledge graph ── */
+.graph-node-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  fill: var(--color-dim);
+  pointer-events: none;
+  user-select: none;
+}
+.graph-node-label.active {
+  fill: var(--color-text);
+}
+.graph-edge {
+  stroke: rgb(56 224 255 / 0.22);
+  transition: stroke 0.15s ease;
+}
+.graph-edge.ghost {
+  stroke-dasharray: 4 4;
+  stroke: rgb(56 224 255 / 0.14);
+}
+.graph-node {
+  cursor: pointer;
+}
+.graph-node.dimmed {
+  opacity: 0.06;
+  transition: opacity 0.2s ease;
+}
+
+/* Скроллбар — минимал */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgb(56 224 255 / 0.16);
+  border-radius: 5px;
+  border: 2px solid var(--color-ink-950);
+}
+::-webkit-scrollbar-thumb:hover { background: rgb(56 224 255 / 0.3); }

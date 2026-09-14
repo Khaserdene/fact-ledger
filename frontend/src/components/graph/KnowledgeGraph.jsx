@@ -1,0 +1,262 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  forceCenter,
+  forceCollide,
+  forceLink,
+  forceManyBody,
+  forceSimulation,
+  forceX,
+  forceY,
+} from 'd3-force'
+import { select } from 'd3-selection'
+import { zoom as d3zoom } from 'd3-zoom'
+import { entityType } from '../entity/EntityBadge'
+
+const TICKS = 320
+
+/**
+ * d3-force + SVG knowledge graph.
+ * Статик layout: simulation-ийг sync ажиллуулаад дараа нь zoom/pan/drag хийнэ.
+ * Шүүлт (filteredNodeIds, yearRange) зөвхөн render түвшинд хийгдэнэ —
+ * node-ийн байрлал хадгалагдаж, slider шүүрэхэд график хөдөлөхгүй.
+ */
+export default function KnowledgeGraph({ data, filteredNodeIds, yearRange, selectedId, onSelect }) {
+  const wrapRef = useRef(null)
+  const svgRef = useRef(null)
+  const simNodes = useRef([])
+  const simEdges = useRef([])
+  const [size, setSize] = useState({ w: 800, h: 600 })
+  const [, forceRender] = useState(0)
+  const [hoverId, setHoverId] = useState(null)
+  const dragRef = useRef(null)
+
+  // Контейнерийн хэмжээг ажиглана (responsive)
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const ro = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect
+      setSize({ w: Math.max(width, 100), h: Math.max(height, 100) })
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const nodeById = useMemo(() => {
+    const m = new Map()
+    for (const n of simNodes.current) m.set(n.id, n)
+    return m
+  }, [data])
+
+  // Simulation: өгөгдөл өөрчлөгдөх бүрд дахин бүтээнэ (шүүлтөөс үл хамааран БҮХ node)
+  useEffect(() => {
+    if (!data) return
+    const nodes = data.nodes.map((n, i) => ({ ...n, x: null, y: null, idx: i }))
+    const idSet = new Set(nodes.map((n) => n.id))
+    const links = data.edges
+      .filter((e) => idSet.has(e.source) && idSet.has(e.target))
+      .map((e) => ({ ...e }))
+    simNodes.current = nodes
+    simEdges.current = links
+
+    const sim = forceSimulation(nodes)
+      .force(
+        'link',
+        forceLink(links).id((d) => d.id).distance(90).strength(0.5)
+      )
+      .force('charge', forceManyBody().strength(-220))
+      .force('collide', forceCollide().radius((d) => nodeRadius(d) + 14))
+      .force('x', forceX(size.w / 2).strength(0.04))
+      .force('y', forceY(size.h / 2).strength(0.06))
+      .force('center', forceCenter(size.w / 2, size.h / 2).strength(0.05))
+      .stop()
+    for (let i = 0; i < TICKS; i++) sim.tick()
+    forceRender((v) => v + 1)
+
+    return () => sim.stop()
+  }, [data, size.w, size.h])
+
+  // Zoom / pan
+  useEffect(() => {
+    const svg = select(svgRef.current)
+    const behavior = d3zoom()
+      .scaleExtent([0.25, 4])
+      .on('zoom', (event) => {
+        select(svgRef.current.querySelector('g.viewport')).attr(
+          'transform',
+          event.transform.toString()
+        )
+      })
+    svg.call(behavior).on('dblclick.zoom', null)
+    return () => {
+      svg.on('.zoom', null)
+    }
+  }, [])
+
+  function nodeRadius(d) {
+    if (d.ghost) return 5
+    return 7 + Math.sqrt(d.fact_count || 0) * 2.2
+  }
+
+  function startDrag(event, d) {
+    event.stopPropagation()
+    const pt = svgPoint(event)
+    dragRef.current = { id: d.id, dx: d.x - pt.x, dy: d.y - pt.y, moved: false }
+    window.addEventListener('pointermove', onDragMove)
+    window.addEventListener('pointerup', onDragEnd)
+  }
+  function onDragMove(event) {
+    const st = dragRef.current
+    if (!st) return
+    const d = simNodes.current.find((n) => n.id === st.id)
+    if (!d) return
+    const pt = svgPoint(event)
+    d.x = pt.x + st.dx
+    d.y = pt.y + st.dy
+    st.moved = true
+    forceRender((v) => v + 1)
+  }
+  function onDragEnd(event) {
+    const st = dragRef.current
+    dragRef.current = null
+    window.removeEventListener('pointermove', onDragMove)
+    window.removeEventListener('pointerup', onDragEnd)
+    if (st && !st.moved && onSelect) {
+      const d = simNodes.current.find((n) => n.id === st.id)
+      if (d) onSelect(d)
+    }
+  }
+  function svgPoint(event) {
+    const svg = svgRef.current
+    const rect = svg.getBoundingClientRect()
+    const viewport = svg.querySelector('g.viewport')
+    const ctm = viewport && viewport.getCTM()
+    const px = event.clientX - rect.left
+    const py = event.clientY - rect.top
+    if (ctm) {
+      const inv = ctm.inverse()
+      return {
+        x: inv.a * px + inv.c * py + inv.e,
+        y: inv.b * px + inv.d * py + inv.f,
+      }
+    }
+    return { x: px, y: py }
+  }
+
+  const neighborIds = useMemo(() => {
+    if (!hoverId && !selectedId) return null
+    const focus = hoverId || selectedId
+    const s = new Set([focus])
+    for (const e of simEdges.current) {
+      if (e.source === focus) s.add(typeof e.target === 'object' ? e.target.id : e.target)
+      if ((typeof e.target === 'object' ? e.target.id : e.target) === focus) s.add(e.source)
+    }
+    return s
+  }, [hoverId, selectedId])
+
+  const nodes = simNodes.current
+  const links = simEdges.current
+  const labelLimit = nodes.length <= 60 || hoverId || selectedId
+
+  const yearOf = (iso) => (iso ? parseInt(iso.slice(0, 4), 10) : null)
+  function overlapsRange(fromIso, toIso) {
+    if (!yearRange) return true
+    const [y1, y2] = yearRange
+    const from = yearOf(fromIso)
+    const to = yearOf(toIso)
+    if (from === null && to === null) return true // хугацаагүй = үргэлж идэвхтэй
+    return (from === null || from <= y2) && (to === null || to >= y1)
+  }
+  const nodeVisible = (d) =>
+    (!filteredNodeIds || filteredNodeIds.includes(d.id)) && overlapsRange(d.active_from, d.active_to)
+  const edgeVisible = (e) => {
+    const s = typeof e.source === 'object' ? e.source : nodeById.get(e.source)
+    const t = typeof e.target === 'object' ? e.target : nodeById.get(e.target)
+    if (!s || !t) return false
+    if (!nodeVisible(s) || !nodeVisible(t)) return false
+    return overlapsRange(e.start_date, e.end_date)
+  }
+
+  return (
+    <div ref={wrapRef} className="w-full h-full overflow-hidden">
+      <svg ref={svgRef} width="100%" height="100%" className="touch-none select-none">
+        <defs>
+          <radialGradient id="nodeGlow">
+            <stop offset="0%" stopColor="rgb(56 224 255 / 0.35)" />
+            <stop offset="100%" stopColor="rgb(56 224 255 / 0)" />
+          </radialGradient>
+        </defs>
+        <g className="viewport">
+          {links.filter(edgeVisible).map((e) => {
+            const s = typeof e.source === 'object' ? e.source : nodeById.get(e.source)
+            const t = typeof e.target === 'object' ? e.target : nodeById.get(e.target)
+            if (!s || !t) return null
+            const focus = !neighborIds || (neighborIds.has(s.id) && neighborIds.has(t.id))
+            // hover/selection үед холбогдсон ирмэгийг тодорхой тодруулах
+            const hot = (hoverId || selectedId) && neighborIds && neighborIds.has(s.id) && neighborIds.has(t.id)
+            return (
+              <line
+                key={e.id}
+                className={`graph-edge ${t.ghost ? 'ghost' : ''}`}
+                x1={s.x}
+                y1={s.y}
+                x2={t.x}
+                y2={t.y}
+                stroke={hot ? 'var(--color-accent-bright)' : undefined}
+                strokeWidth={hot ? 1.8 : undefined}
+                opacity={focus ? (hot ? 0.95 : 1) : 0.06}
+              />
+            )
+          })}
+          {nodes.filter(nodeVisible).map((d) => {
+            const t = entityType(d.entity_type)
+            const r = nodeRadius(d)
+            const dimmed = neighborIds && !neighborIds.has(d.id)
+            const isSel = selectedId === d.id
+            const isHover = hoverId === d.id
+            return (
+              <g
+                key={d.id}
+                transform={`translate(${d.x},${d.y})`}
+                className={`graph-node ${dimmed ? 'dimmed' : ''}`}
+                style={{ cursor: dragRef.current?.id === d.id ? 'grabbing' : 'grab' }}
+                onPointerDown={(ev) => startDrag(ev, d)}
+                onPointerEnter={() => setHoverId(d.id)}
+                onPointerLeave={() => setHoverId((h) => (h === d.id ? null : h))}
+              >
+                {(isSel || isHover) && <circle r={r + 12} fill="url(#nodeGlow)" />}
+                {/* hover үед холбогдсон node-уудыг гэрэлтүүлэх цагираг */}
+                {neighborIds && neighborIds.has(d.id) && (hoverId || selectedId) && !isSel && (
+                    <circle r={r + 5} fill="none" stroke="var(--color-accent)" strokeWidth={1} opacity={0.7} />
+                )}
+                {/* томруулсан товч талбар — жижиг node-ийг ч мөр дарж чирахад хялбар */}
+                <circle r={Math.max(r + 8, 14)} fill="transparent" />
+                <circle
+                  r={r}
+                  fill={d.ghost ? 'var(--color-ink-900)' : t.color}
+                  fillOpacity={d.ghost ? 0.4 : 0.18}
+                  stroke={isSel ? 'var(--color-accent-bright)' : t.color}
+                  strokeWidth={isSel ? 2.5 : 1.5}
+                  strokeDasharray={d.ghost ? '3 3' : undefined}
+                />
+                {d.has_contradiction && (
+                  <circle r={3} cx={r * 0.7} cy={-r * 0.7} fill="var(--color-warn)" stroke="var(--color-ink-950)" strokeWidth="1" />
+                )}
+                {(labelLimit || isHover || isSel) && (
+                  <text
+                    className={`graph-node-label ${isSel || isHover ? 'active' : ''}`}
+                    y={r + 13}
+                    textAnchor="middle"
+                    style={d.ghost ? { fontStyle: 'italic' } : undefined}
+                  >
+                    {d.name.length > 22 ? d.name.slice(0, 20) + '…' : d.name}
+                  </text>
+                )}
+              </g>
+            )
+          })}
+        </g>
+      </svg>
+    </div>
+  )
+}
