@@ -177,8 +177,102 @@ export default function KnowledgeGraph({ data, filteredNodeIds, yearRange, selec
     return overlapsRange(e.start_date, e.end_date)
   }
 
+  // Hover хийсэн node болон түүний шууд холбоостой хөршүүдийн мэдээллийг бэлтгэнэ
+  const hoverInfo = useMemo(() => {
+    if (!hoverId) return null
+    const targetNode = nodeById.get(hoverId)
+    if (!targetNode) return null
+
+    const connections = []
+    for (const e of links) {
+      if (!edgeVisible(e)) continue
+      const s = typeof e.source === 'object' ? e.source : nodeById.get(e.source)
+      const t = typeof e.target === 'object' ? e.target : nodeById.get(e.target)
+      if (!s || !t) continue
+
+      if (s.id === hoverId) {
+        connections.push({
+          id: e.id,
+          other: t,
+          rel: e.label || 'холбоотой',
+          direction: 'out',
+          period: [e.start_date, e.end_date].filter(Boolean).map((d) => d.slice(0, 4)).join(' ~ ')
+        })
+      } else if (t.id === hoverId) {
+        connections.push({
+          id: e.id,
+          other: s,
+          rel: e.label || 'холбоотой',
+          direction: 'in',
+          period: [e.start_date, e.end_date].filter(Boolean).map((d) => d.slice(0, 4)).join(' ~ ')
+        })
+      }
+    }
+
+    return {
+      node: targetNode,
+      connections
+    }
+  }, [hoverId, links, nodeById, filteredNodeIds, yearRange])
+
   return (
-    <div ref={wrapRef} className="w-full h-full overflow-hidden">
+    <div ref={wrapRef} className="w-full h-full overflow-hidden relative">
+      {/* ── Hover хийх үед гарах Холбоосын Товч Карточка (Hover Tooltip Card) ── */}
+      {hoverInfo && (
+        <div className="absolute top-4 left-4 z-10 max-w-sm pointer-events-none transition-all duration-200">
+          <div className="glass-strong p-3.5 rounded-xl border border-accent/30 shadow-2xl backdrop-blur-md bg-ink-950/85">
+            <div className="flex items-center gap-2 mb-1.5">
+              <span
+                className="w-2.5 h-2.5 rounded-full shrink-0"
+                style={{
+                  background: entityType(hoverInfo.node.entity_type).color,
+                  boxShadow: `0 0 8px ${entityType(hoverInfo.node.entity_type).color}`
+                }}
+              />
+              <span className="font-display font-bold text-sm text-text truncate">
+                {hoverInfo.node.name}
+              </span>
+              <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-surface-2 text-faint ml-auto">
+                {entityType(hoverInfo.node.entity_type).label}
+              </span>
+            </div>
+
+            <div className="text-xs text-accent font-medium mb-2 border-b border-line/50 pb-1 flex items-center justify-between">
+              <span>Холбоотой субъектууд ({hoverInfo.connections.length})</span>
+              {hoverInfo.node.fact_count > 0 && (
+                <span className="text-faint font-normal">{hoverInfo.node.fact_count} факт</span>
+              )}
+            </div>
+
+            {hoverInfo.connections.length === 0 ? (
+              <div className="text-xs text-faint italic py-1">Шууд холбоотой субъект одоогоор алга</div>
+            ) : (
+              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                {hoverInfo.connections.slice(0, 8).map((c) => (
+                  <div key={c.id} className="flex items-center justify-between gap-2 text-xs bg-ink-900/60 px-2 py-1 rounded border border-line/30">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: entityType(c.other.entity_type).color }} />
+                      <span className="font-medium text-text truncate">{c.other.name}</span>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="text-[10px] text-accent bg-accent/10 px-1.5 py-0.5 rounded border border-accent/20">
+                        {c.rel}
+                      </span>
+                      {c.period && <span className="text-[10px] text-faint font-mono">{c.period}</span>}
+                    </div>
+                  </div>
+                ))}
+                {hoverInfo.connections.length > 8 && (
+                  <div className="text-[10px] text-center text-faint pt-1">
+                    + цаана нь {hoverInfo.connections.length - 8} холбоос байна
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <svg ref={svgRef} width="100%" height="100%" className="touch-none select-none">
         <defs>
           <radialGradient id="nodeGlow">
@@ -192,20 +286,70 @@ export default function KnowledgeGraph({ data, filteredNodeIds, yearRange, selec
             const t = typeof e.target === 'object' ? e.target : nodeById.get(e.target)
             if (!s || !t) return null
             const focus = !neighborIds || (neighborIds.has(s.id) && neighborIds.has(t.id))
-            // hover/selection үед холбогдсон ирмэгийг тодорхой тодруулах
-            const hot = (hoverId || selectedId) && neighborIds && neighborIds.has(s.id) && neighborIds.has(t.id)
+            const isHoverEdge = hoverId && (s.id === hoverId || t.id === hoverId)
+            const isSelEdge = selectedId && (s.id === selectedId || t.id === selectedId)
+            const hot = isHoverEdge || isSelEdge
+            
+            // Сонгосон эсвэл hover хийсэн субъектийн эсрэг талын субъектийн өнгийг эжид олгоно
+            const focusNode = hoverId ? nodeById.get(hoverId) : (selectedId ? nodeById.get(selectedId) : null)
+            const otherNode = focusNode ? (s.id === focusNode.id ? t : s) : t
+            const targetColor = entityType(otherNode.entity_type).color
+
+            const midX = (s.x + t.x) / 2
+            const midY = (s.y + t.y) / 2
+
             return (
-              <line
-                key={e.id}
-                className={`graph-edge ${t.ghost ? 'ghost' : ''}`}
-                x1={s.x}
-                y1={s.y}
-                x2={t.x}
-                y2={t.y}
-                stroke={hot ? 'var(--color-accent-bright)' : undefined}
-                strokeWidth={hot ? 1.8 : undefined}
-                opacity={focus ? (hot ? 0.95 : 1) : 0.06}
-              />
+              <g key={e.id}>
+                {/* Арын зөөлөн гэрэлтэлт (glow effect for active edges) */}
+                {hot && (
+                  <line
+                    x1={s.x}
+                    y1={s.y}
+                    x2={t.x}
+                    y2={t.y}
+                    stroke={targetColor}
+                    strokeWidth={6}
+                    opacity={0.3}
+                  />
+                )}
+                <line
+                  className={`graph-edge ${t.ghost ? 'ghost' : ''}`}
+                  x1={s.x}
+                  y1={s.y}
+                  x2={t.x}
+                  y2={t.y}
+                  stroke={hot ? targetColor : (t.ghost ? 'var(--color-ink-700)' : entityType(t.entity_type).color)}
+                  strokeWidth={hot ? 2.5 : 1.2}
+                  strokeDasharray={hot ? '5 4' : undefined}
+                  opacity={focus ? (hot ? 1 : 0.45) : 0.04}
+                />
+                {/* Hover эсвэл Select хийсэн үед edge дээрх харилцааны нэрийг тухайн холбогдсон субъектийн өнгөөр ялгаж харуулах */}
+                {hot && e.label && (
+                  <g transform={`translate(${midX}, ${midY})`}>
+                    <rect
+                      x="-38"
+                      y="-11"
+                      width="76"
+                      height="20"
+                      rx="6"
+                      fill="var(--color-ink-950)"
+                      stroke={targetColor}
+                      strokeWidth="1.2"
+                      opacity="0.95"
+                    />
+                    <text
+                      textAnchor="middle"
+                      y="3"
+                      fill={targetColor}
+                      fontSize="10"
+                      fontWeight="bold"
+                      fontFamily="var(--font-mono)"
+                    >
+                      {e.label.length > 10 ? e.label.slice(0, 9) + '…' : e.label}
+                    </text>
+                  </g>
+                )}
+              </g>
             )
           })}
           {nodes.filter(nodeVisible).map((d) => {
@@ -260,3 +404,4 @@ export default function KnowledgeGraph({ data, filteredNodeIds, yearRange, selec
     </div>
   )
 }
+

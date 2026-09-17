@@ -260,15 +260,20 @@ function NodePanel({ node, onClose }) {
   const t = entityType(node.entity_type)
   const isGhost = !!node.ghost
   const [rels, setRels] = useState(null)
+  const [facts, setFacts] = useState(null)
+  const [loadingProfile, setLoadingProfile] = useState(false)
 
   useEffect(() => {
     if (isGhost) return
     let alive = true
+    setLoadingProfile(true)
+
     Promise.all([
       api.getEntityRelationships(node.id),
       api.getIncomingRelationships(node.id),
+      api.getEntityFacts(node.id)
     ])
-      .then(([out, inc]) => {
+      .then(([out, inc, factData]) => {
         if (!alive) return
         const items = [
           ...out.map((r) => ({
@@ -276,68 +281,93 @@ function NodePanel({ node, onClose }) {
             other: r.target_entity_id ? { id: r.target_entity_id, name: r.target_name } : null,
             label: r.rel_type,
             otherName: r.target_name,
-            period: [r.start_date, r.end_date].filter(Boolean).join(' ~ '),
+            period: [r.start_date, r.end_date].filter(Boolean).map((d) => d.slice(0, 4)).join(' ~ '),
           })),
           ...inc.map((r) => ({
             id: `i${r.id}`,
             other: r.source_entity_id ? { id: r.source_entity_id, name: r.source_entity_name } : null,
             label: r.rel_type,
             otherName: r.source_entity_name,
-            period: [r.start_date, r.end_date].filter(Boolean).join(' ~ '),
+            period: [r.start_date, r.end_date].filter(Boolean).map((d) => d.slice(0, 4)).join(' ~ '),
           })),
         ]
         setRels(items)
+        setFacts(factData)
       })
-      .catch(() => setRels([]))
+      .catch(() => {
+        if (alive) {
+          setRels([])
+          setFacts([])
+        }
+      })
+      .finally(() => {
+        if (alive) setLoadingProfile(false)
+      })
+
     return () => { alive = false }
   }, [node.id, isGhost])
 
+  const bioFacts = useMemo(() => facts?.filter(f => f.fact_type === 'biographical') || [], [facts])
+  const chronoFacts = useMemo(() => facts?.filter(f => f.fact_type === 'chronological') || [], [facts])
+
   return (
-    <div className="absolute z-20 inset-x-0 bottom-0 lg:inset-auto lg:top-4 lg:right-4 lg:bottom-4 lg:w-96">
-      <GlassCard className="glass-strong p-5 h-full max-h-[70vh] lg:max-h-none overflow-y-auto relative">
+    <div className="absolute z-20 inset-x-0 bottom-0 lg:inset-auto lg:top-4 lg:right-4 lg:bottom-4 lg:w-[420px]">
+      <GlassCard className="glass-strong p-5 h-full max-h-[80vh] lg:max-h-none overflow-y-auto relative border-accent/30 shadow-2xl">
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 text-faint hover:text-text transition-colors"
+          className="absolute top-3 right-3 p-1 text-faint hover:text-text rounded-md hover:bg-surface-2 transition-colors"
         >
-          <X size={16} />
+          <X size={18} />
         </button>
+
+        {/* ── Төлөв & Нэр ── */}
         <div className="flex items-center gap-2 mb-2">
           <span
-            className="w-3 h-3 rounded-full"
+            className="w-3 h-3 rounded-full shrink-0"
             style={{ background: t.color, boxShadow: `0 0 10px ${t.color}` }}
           />
           <span className="terminal-label">{t.label}{isGhost && ' · GHOST'}</span>
         </div>
-        <h2 className="font-display font-bold text-lg leading-snug pr-5">{node.name}</h2>
+
+        <h2 className="font-display font-bold text-xl leading-snug pr-6 text-text">{node.name}</h2>
+
         {node.active_from && (
-          <p className="data-label mt-1">
+          <p className="data-label mt-1 text-accent">
             {node.active_from.slice(0, 4)} — {node.active_to ? node.active_to.slice(0, 4) : 'одоо'}
           </p>
         )}
-        {node.tldr_summary && <p className="text-sm text-dim mt-2 leading-relaxed">{node.tldr_summary}</p>}
+
+        {/* ── Дэлгэрэнгүй товч тайлбар ── */}
+        {node.tldr_summary && (
+          <div className="mt-3 p-2.5 rounded-lg bg-surface-2/60 border border-line/40 text-xs text-dim leading-relaxed">
+            <span className="font-mono text-[10px] text-accent font-bold uppercase block mb-1">Товч хураангуй</span>
+            {node.tldr_summary}
+          </div>
+        )}
         {node.description && !node.tldr_summary && (
           <p className="text-sm text-dim mt-2 leading-relaxed">{node.description}</p>
         )}
 
         {!isGhost && (
-          <div className="flex gap-4 mt-4 data-label">
-            <span className="flex items-center gap-1.5">
-              <FileText size={13} /> {node.fact_count} ФАКТ
+          <div className="flex gap-4 mt-3 data-label border-y border-line/40 py-2">
+            <span className="flex items-center gap-1.5 text-text">
+              <FileText size={13} className="text-accent" /> {facts ? facts.length : node.fact_count} ФАКТ
             </span>
             {node.has_contradiction && (
-              <span className="flex items-center gap-1.5 text-warn">
+              <span className="flex items-center gap-1.5 text-warn font-semibold">
                 <AlertTriangle size={13} /> ЗӨРЧИЛТЭЙ
               </span>
             )}
           </div>
         )}
 
+        {/* ── Алиас / Нэрийн хувилбар ── */}
         {!isGhost && node.aliases?.length > 0 && (
-          <div className="mt-4">
-            <div className="terminal-label mb-1.5">Хувилбарууд</div>
-            <div className="flex flex-wrap gap-1.5">
+          <div className="mt-3">
+            <div className="terminal-label mb-1">Нэрийн хувилбарууд</div>
+            <div className="flex flex-wrap gap-1">
               {node.aliases.map((a) => (
-                <span key={a} className="text-xs text-dim glass px-2 py-0.5 rounded-md">
+                <span key={a} className="text-[11px] text-dim glass px-2 py-0.5 rounded">
                   {a}
                 </span>
               ))}
@@ -345,40 +375,79 @@ function NodePanel({ node, onClose }) {
           </div>
         )}
 
-        {/* Холбоосууд */}
+        {/* ── Намтрын Фактууд (Biographical) ── */}
+        {bioFacts.length > 0 && (
+          <div className="mt-4">
+            <div className="terminal-label mb-1.5 text-accent">Намтар & Суурь мэдээлэл ({bioFacts.length})</div>
+            <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+              {bioFacts.slice(0, 5).map((f) => (
+                <div key={f.id} className="text-xs glass p-2 rounded border border-line/30">
+                  <div className="text-dim">{f.fact_text}</div>
+                  {f.role_context && <div className="text-[10px] text-faint font-mono mt-0.5">{f.role_context}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Он цагийн хэлхээс (Chronological Timeline) ── */}
+        {chronoFacts.length > 0 && (
+          <div className="mt-4">
+            <div className="terminal-label mb-1.5 text-accent">Он цагийн хэлхээс ({chronoFacts.length})</div>
+            <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+              {chronoFacts.slice(0, 6).map((f) => (
+                <div key={f.id} className="text-xs glass p-2 rounded border border-line/30 flex gap-2">
+                  <div className="font-mono text-[10px] text-accent font-bold shrink-0 pt-0.5">
+                    {f.fact_date ? f.fact_date.slice(0, 4) : '---'}
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-text leading-snug">{f.fact_text}</div>
+                    {f.role_context && (
+                      <div className="text-[10px] text-faint mt-0.5 font-mono">{f.role_context}</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Холбоосууд ── */}
         {rels && rels.length > 0 && (
-          <div className="mt-5">
-            <div className="terminal-label mb-2">ХОЛБООСУУД ({rels.length})</div>
-            <div className="space-y-1.5">
-              {rels.slice(0, 12).map((r) => (
-                <div key={r.id} className="text-xs glass px-2.5 py-1.5 rounded-md">
-                  <div className="flex items-center gap-2 flex-wrap">
+          <div className="mt-4">
+            <div className="terminal-label mb-1.5 text-accent">Бүх Холбоосууд ({rels.length})</div>
+            <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+              {rels.map((r) => (
+                <div key={r.id} className="text-xs glass px-2.5 py-1.5 rounded flex items-center justify-between border border-line/30">
+                  <div className="flex items-center gap-1.5 truncate">
                     {r.other ? (
-                      <Link to={`/entities/${r.other.id}`} className="text-accent hover:underline font-mono">
+                      <Link to={`/entities/${r.other.id}`} className="text-accent hover:underline font-medium">
                         {r.otherName}
                       </Link>
                     ) : (
                       <span className="text-dim">{r.otherName}</span>
                     )}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
                     <Badge>{r.label}</Badge>
-                    {r.period && <span className="text-faint">{r.period}</span>}
+                    {r.period && <span className="text-[10px] text-faint font-mono">{r.period}</span>}
                   </div>
                 </div>
               ))}
-              {rels.length > 12 && (
-                <p className="data-label">+ {rels.length - 12} дараагийн холбоос…</p>
-              )}
             </div>
           </div>
         )}
 
         {!isGhost && (
-          <Link
-            to={`/entities/${node.id}`}
-            className="mt-5 inline-flex items-center gap-2 text-sm text-accent hover:text-accent-bright font-medium transition-colors"
-          >
-            Дэлгэрэнгүй профайл <ExternalLink size={14} />
-          </Link>
+          <div className="mt-5 pt-3 border-t border-line/50 flex items-center justify-between">
+            <Link
+              to={`/entities/${node.id}`}
+              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-accent/15 border border-accent/40 text-accent hover:bg-accent hover:text-ink-950 font-medium text-sm transition-all"
+            >
+              <span>Бүтэн профайл руу очих</span>
+              <ExternalLink size={15} />
+            </Link>
+          </div>
         )}
       </GlassCard>
     </div>
