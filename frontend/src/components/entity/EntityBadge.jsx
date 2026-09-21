@@ -1,7 +1,8 @@
 import Badge from '../ui/Badge'
-import { User, Building2, Briefcase, Landmark, Flag, GraduationCap, MapPin, HandCoins, Shapes, LandPlot, ScrollText } from 'lucide-react'
+import { User, Building2, Briefcase, Landmark, Flag, GraduationCap, MapPin, HandCoins, Shapes, LandPlot, ScrollText, FolderGit2 } from 'lucide-react'
 
 export const ENTITY_TYPES = {
+  case: { label: 'Мөрдлөгийн хэрэг', Icon: FolderGit2, color: '#f43f5e' },
   person: { label: 'Хүн', Icon: User, color: '#38e0ff' },
   org: { label: 'Байгууллага', Icon: Building2, color: '#7deeff' },
   company: { label: 'Компани', Icon: Briefcase, color: '#5eead4' },
@@ -16,7 +17,7 @@ export const ENTITY_TYPES = {
 }
 
 // График дээр гаргах дараалал
-export const TYPE_ORDER = ['person', 'government', 'parliament', 'party', 'org', 'company', 'fund', 'state', 'school', 'location', 'other']
+export const TYPE_ORDER = ['case', 'person', 'government', 'parliament', 'party', 'org', 'company', 'fund', 'state', 'school', 'location', 'other']
 
 export function entityType(type) {
   return ENTITY_TYPES[type] || ENTITY_TYPES.other

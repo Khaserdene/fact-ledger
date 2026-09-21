@@ -1,6 +1,21 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Network, Search, X, ExternalLink, AlertTriangle, FileText, Ghost } from 'lucide-react'
+import {
+  Network,
+  Search,
+  X,
+  ExternalLink,
+  AlertTriangle,
+  FileText,
+  Ghost,
+  FolderGit2,
+  Filter,
+  Sparkles,
+  Layers,
+  Calendar,
+  Compass,
+  Target
+} from 'lucide-react'
 import { api } from '../api'
 import { ENTITY_TYPES, entityType, TYPE_ORDER } from '../components/entity/EntityBadge'
 import KnowledgeGraph from '../components/graph/KnowledgeGraph'
@@ -13,11 +28,13 @@ export default function GraphHub() {
   const [error, setError] = useState(null)
   const [typeFilter, setTypeFilter] = useState(new Set())
   const [onlyContradictions, setOnlyContradictions] = useState(false)
+  const [onlyCases, setOnlyCases] = useState(false)
   const [hideGhosts, setHideGhosts] = useState(false)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(null)
   const [yearBounds, setYearBounds] = useState(null) // [minYear, maxYear]
   const [yearRange, setYearRange] = useState(null) // null = бүх цаг үе
+  const [layoutMode, setLayoutMode] = useState('force') // 'force' | 'timeline' | 'cluster' | 'radial'
 
   useEffect(() => {
     api
@@ -53,6 +70,8 @@ export default function GraphHub() {
   }, [data])
 
   const matches = (n) => {
+    if (onlyCases && !n.is_case) return false
+
     if (n.ghost) {
       if (hideGhosts) return false
       if (typeFilter.size && !typeFilter.has(n.entity_type)) return false
@@ -78,7 +97,7 @@ export default function GraphHub() {
   const visibleNodeIds = useMemo(() => {
     if (!data) return []
     return data.nodes.filter(matches).map((n) => n.id)
-  }, [data, typeFilter, onlyContradictions, hideGhosts, query, yearRange])
+  }, [data, typeFilter, onlyContradictions, onlyCases, hideGhosts, query, yearRange])
 
   if (error)
     return (
@@ -95,26 +114,28 @@ export default function GraphHub() {
 
   const totalEntities = data.nodes.filter((n) => !n.ghost).length
   const contradictionCount = data.nodes.filter((n) => n.has_contradiction).length
+  const caseCount = data.nodes.filter((n) => n.is_case).length
 
   return (
     <div className="flex flex-col-reverse lg:flex-row gap-4 -mx-4 md:-mx-8 -my-6 md:-my-8">
       {/* ── Хяналтын panel ── */}
-      <aside className="lg:w-72 shrink-0 lg:h-[calc(100vh-4rem)] overflow-y-auto p-4 md:p-6 space-y-4">
+      <aside className="lg:w-72 shrink-0 lg:h-[calc(100vh-4rem)] overflow-y-auto p-4 md:p-6 space-y-4 bg-surface-1/40 border-r border-line/60">
         <div className="flex items-center gap-2.5">
           <Network size={20} className="text-accent" />
-          <h1 className="font-display font-bold text-lg tracking-wide">Knowledge Graph</h1>
+          <h1 className="font-display font-bold text-lg tracking-wide text-text">Knowledge Graph</h1>
         </div>
-        <div className="data-label">
-          {totalEntities} СУБЪЕКТ · {data.edges.length} ХОЛБООС · {contradictionCount} ЗӨРЧИЛТЭЙ
+        <div className="data-label leading-relaxed">
+          {totalEntities} СУБЪЕКТ · {data.edges.length} ХОЛБООС · {caseCount} МӨРДЛӨГ
         </div>
 
+        {/* Хайлтын талбар */}
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Хайх…"
-            className="w-full glass bg-transparent pl-9 pr-8 py-2 text-sm outline-none focus:border-accent-line placeholder:text-faint"
+            placeholder="Хайх (нэр, сэдэв, мөрдлөг)…"
+            className="w-full glass bg-transparent pl-9 pr-8 py-2 text-sm outline-none focus:border-accent-line placeholder:text-faint rounded-lg font-mono text-text"
           />
           {query && (
             <button
@@ -126,74 +147,102 @@ export default function GraphHub() {
           )}
         </div>
 
+        {/* ── Онцгой горимууд (Quick Filters) ── */}
+        <div className="space-y-1.5 pt-2 border-t border-line/60">
+          <div className="terminal-label">Шуурхай сонголт</div>
+
+          {/* Мөрдлөгүүдээр шүүх */}
+          <button
+            onClick={() => setOnlyCases(!onlyCases)}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-mono border transition ${
+              onlyCases
+                ? 'border-rose-500/60 bg-rose-500/15 text-rose-300 font-bold shadow-[0_0_12px_rgb(244_63_94/0.2)]'
+                : 'border-transparent hover:bg-surface-2 text-dim'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <FolderGit2 size={14} className={onlyCases ? 'text-rose-400' : 'text-dim'} />
+              Зөвхөн Мөрдлөгүүд
+            </span>
+            <Badge tone={onlyCases ? 'accent' : 'neutral'}>{caseCount}</Badge>
+          </button>
+
+          {/* Зөрчлүүд */}
+          <button
+            onClick={() => setOnlyContradictions(!onlyContradictions)}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-mono border transition ${
+              onlyContradictions
+                ? 'border-warn-line bg-warn-dim text-warn font-bold'
+                : 'border-transparent hover:bg-surface-2 text-dim'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <AlertTriangle size={14} className={onlyContradictions ? 'text-warn' : 'text-dim'} />
+              Зөрчилтэй мэдээллүүд
+            </span>
+            <Badge tone={onlyContradictions ? 'warn' : 'neutral'}>{contradictionCount}</Badge>
+          </button>
+        </div>
+
         {/* Төрлийн шүүлтүүр */}
-        <div className="space-y-1.5">
-          <div className="terminal-label">Шүүлтүүр</div>
-          {TYPE_ORDER.filter((t) => counts[t]).map((t) => {
-            const info = entityType(t)
-            const active = typeFilter.has(t)
-            const toggle = () => {
-              const next = new Set(typeFilter)
-              if (active) next.delete(t)
-              else next.add(t)
-              setTypeFilter(next)
-            }
-            return (
+        <div className="space-y-1.5 pt-2 border-t border-line/60">
+          <div className="flex items-center justify-between">
+            <span className="terminal-label">Төрлөөр шүүх</span>
+            {typeFilter.size > 0 && (
               <button
-                key={t}
-                onClick={toggle}
-                className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm border transition-all ${
-                  active
-                    ? 'border-accent-line bg-accent-dim text-text'
-                    : 'border-transparent hover:bg-surface-2 text-dim'
-                }`}
+                onClick={() => setTypeFilter(new Set())}
+                className="text-[10px] font-mono text-accent hover:underline"
               >
-                <span
-                  className="w-2.5 h-2.5 rounded-full shrink-0"
-                  style={{ background: info.color, boxShadow: `0 0 8px ${info.color}` }}
-                />
-                <span className="flex-1 text-left">{info.label}</span>
-                <span className="data-label">{counts[t]}</span>
+                Бүгдийг сонгох
               </button>
-            )
-          })}
+            )}
+          </div>
+          <div className="max-h-56 overflow-y-auto space-y-1 pr-1">
+            {TYPE_ORDER.filter((t) => counts[t]).map((t) => {
+              const info = entityType(t)
+              const active = typeFilter.has(t)
+              const toggle = () => {
+                const next = new Set(typeFilter)
+                if (active) next.delete(t)
+                else next.add(t)
+                setTypeFilter(next)
+              }
+              return (
+                <button
+                  key={t}
+                  onClick={toggle}
+                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs font-mono border transition-all ${
+                    active
+                      ? 'border-accent-line bg-accent-dim text-text font-bold'
+                      : 'border-transparent hover:bg-surface-2 text-dim'
+                  }`}
+                >
+                  <span
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ background: info.color, boxShadow: `0 0 8px ${info.color}` }}
+                  />
+                  <span className="flex-1 text-left truncate">{info.label}</span>
+                  <span className="data-label">{counts[t]}</span>
+                </button>
+              )
+            })}
+          </div>
         </div>
 
-        <div className="space-y-2 pt-1">
-          <label className="flex items-center gap-2.5 text-sm text-dim cursor-pointer">
-            <input
-              type="checkbox"
-              checked={onlyContradictions}
-              onChange={(e) => setOnlyContradictions(e.target.checked)}
-              className="accent-[var(--color-accent)]"
-            />
-            <AlertTriangle size={14} className="text-warn" /> Зөвхөн зөрчилтэй
-          </label>
-          <label className="flex items-center gap-2.5 text-sm text-dim cursor-pointer">
-            <input
-              type="checkbox"
-              checked={hideGhosts}
-              onChange={(e) => setHideGhosts(e.target.checked)}
-              className="accent-[var(--color-accent)]"
-            />
-            <Ghost size={14} /> Тодорхойгүй холбоос нуух
-          </label>
-        </div>
-
-        {/* Хугацааны шүүлтүүр */}
+        {/* Цаг хугацааны цонх */}
         {yearBounds && (
-          <div className="space-y-2 pt-1">
+          <div className="space-y-2 pt-2 border-t border-line/60">
             <div className="flex items-center justify-between">
-              <div className="terminal-label">Цаг хугацаа</div>
+              <span className="terminal-label">Он цагийн интервал</span>
               <button
                 onClick={() => setYearRange([...yearBounds])}
                 disabled={yearRange && yearRange[0] === yearBounds[0] && yearRange[1] === yearBounds[1]}
-                className="data-label hover:text-accent transition-colors disabled:opacity-30"
+                className="data-label hover:text-accent transition-colors disabled:opacity-30 text-[10px]"
               >
                 БҮХ ЦАГ ҮЕ
               </button>
             </div>
-            <div className="font-mono text-sm text-accent text-shadow-[0_0_12px_var(--color-accent-line)]">
+            <div className="font-mono text-xs text-accent">
               {yearRange[0]} — {yearRange[1] === yearBounds[1] ? 'одоо' : yearRange[1]}
             </div>
             <div className="relative h-6">
@@ -211,7 +260,7 @@ export default function GraphHub() {
                 max={yearBounds[1]}
                 value={yearRange[0]}
                 onChange={(e) => setYearRange([Math.min(+e.target.value, yearRange[1] - 1), yearRange[1]])}
-                className="absolute inset-x-0 top-0 w-full appearance-none bg-transparent pointer-events-none [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent [&::-webkit-slider-thumb]:shadow-[0_0_10px_var(--color-accent-line)] [&::-webkit-slider-thumb]:cursor-pointer"
+                className="absolute inset-x-0 top-0 w-full appearance-none bg-transparent pointer-events-none [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent [&::-webkit-slider-thumb]:cursor-pointer"
               />
               <input
                 type="range"
@@ -219,34 +268,44 @@ export default function GraphHub() {
                 max={yearBounds[1]}
                 value={yearRange[1]}
                 onChange={(e) => setYearRange([yearRange[0], Math.max(+e.target.value, yearRange[0] + 1)])}
-                className="absolute inset-x-0 top-0 w-full appearance-none bg-transparent pointer-events-none [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent [&::-webkit-slider-thumb]:shadow-[0_0_10px_var(--color-accent-line)] [&::-webkit-slider-thumb]:cursor-pointer"
+                className="absolute inset-x-0 top-0 w-full appearance-none bg-transparent pointer-events-none [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent [&::-webkit-slider-thumb]:cursor-pointer"
               />
             </div>
-            <div className="flex justify-between data-label">
+            <div className="flex justify-between data-label text-[10px]">
               <span>{yearBounds[0]}</span>
               <span>{yearBounds[1]}</span>
             </div>
           </div>
         )}
 
-        {/* Legend */}
-        <div className="data-label space-y-1.5 pt-2 border-t border-line">
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-3 h-3 rounded-full border border-accent" /> Фактын тоогоор хэмжээ
+        {/* Тайлбар тэмдэглэгээ (Legend) */}
+        <div className="data-label space-y-1.5 pt-2 border-t border-line/60 text-[10px]">
+          <div className="flex items-center gap-2 text-rose-400 font-bold">
+            <span className="inline-block w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse" /> ★ Мөрдлөг / Case Hub
           </div>
           <div className="flex items-center gap-2">
-            <span className="inline-block w-3 h-3 rounded-full border border-dashed border-dim" /> Ghost (нэрээр л холбогдсон)
+            <span className="inline-block w-2.5 h-2.5 rounded-full border border-accent" /> Фактын тоогоор хэмжээ
           </div>
           <div className="flex items-center gap-2">
+            <span className="inline-block w-2.5 h-2.5 rounded-full border border-dashed border-dim" /> Ghost (нэрээр холбогдсон)
+          </div>
+          <div className="flex items-center gap-2 text-warn">
             <span className="inline-block w-2 h-2 rounded-full bg-warn" /> Зөрчилтэй
           </div>
-          <div className="pt-1 text-faint">Node чирж байрлуул · дугуйгаар томруул · дарж дэлгэрэнгүй</div>
         </div>
       </aside>
 
       {/* ── График + сонгосон node ── */}
-      <div className="relative min-w-0 h-[70vh] shrink-0 lg:flex-1 lg:shrink lg:h-[calc(100vh-4rem)]">
-        <KnowledgeGraph data={data} filteredNodeIds={visibleNodeIds} yearRange={yearRange} selectedId={selected?.id} onSelect={setSelected} />
+      <div className="relative min-w-0 h-[75vh] shrink-0 lg:flex-1 lg:shrink lg:h-[calc(100vh-4rem)]">
+        <KnowledgeGraph
+          data={data}
+          filteredNodeIds={visibleNodeIds}
+          yearRange={yearRange}
+          selectedId={selected?.id}
+          onSelect={setSelected}
+          layoutMode={layoutMode}
+          onLayoutChange={setLayoutMode}
+        />
 
         {selected && (
           <NodePanel node={selected} onClose={() => setSelected(null)} />
@@ -259,12 +318,13 @@ export default function GraphHub() {
 function NodePanel({ node, onClose }) {
   const t = entityType(node.entity_type)
   const isGhost = !!node.ghost
+  const isCase = !!node.is_case
   const [rels, setRels] = useState(null)
   const [facts, setFacts] = useState(null)
   const [loadingProfile, setLoadingProfile] = useState(false)
 
   useEffect(() => {
-    if (isGhost) return
+    if (isGhost || isCase) return
     let alive = true
     setLoadingProfile(true)
 
@@ -305,10 +365,7 @@ function NodePanel({ node, onClose }) {
       })
 
     return () => { alive = false }
-  }, [node.id, isGhost])
-
-  const bioFacts = useMemo(() => facts?.filter(f => f.fact_type === 'biographical') || [], [facts])
-  const chronoFacts = useMemo(() => facts?.filter(f => f.fact_type === 'chronological') || [], [facts])
+  }, [node.id, isGhost, isCase])
 
   return (
     <div
@@ -327,9 +384,13 @@ function NodePanel({ node, onClose }) {
         <div className="flex items-center gap-2 mb-2">
           <span
             className="w-3 h-3 rounded-full shrink-0"
-            style={{ background: t.color, boxShadow: `0 0 10px ${t.color}` }}
+            style={{ background: isCase ? '#f43f5e' : t.color, boxShadow: `0 0 10px ${isCase ? '#f43f5e' : t.color}` }}
           />
-          <span className="terminal-label">{t.label}{isGhost && ' · GHOST'}</span>
+          <span className="terminal-label">
+            {isCase ? '★ МӨРДЛӨГИЙН ДЭД-ГРАФ' : t.label}
+            {isGhost && ' · GHOST'}
+          </span>
+          {isCase && <Badge tone="warn">{node.status || 'PUBLISHED'}</Badge>}
         </div>
 
         <h2 className="font-display font-bold text-xl leading-snug pr-6 text-text">{node.name}</h2>
@@ -351,7 +412,24 @@ function NodePanel({ node, onClose }) {
           <p className="text-sm text-dim mt-2 leading-relaxed">{node.description}</p>
         )}
 
-        {!isGhost && (
+        {/* Хэрэв Case Node бол шууд Case Editor руу очих товч */}
+        {isCase && (
+          <div className="mt-4 p-3 bg-surface-2 border border-line rounded-lg space-y-3">
+            <div className="text-xs font-mono text-dim flex items-center gap-2">
+              <FolderGit2 size={16} className="text-accent" />
+              <span>Тусгай мөрдлөгийн дэд-граф болон цаг хугацааны тоглуулагч</span>
+            </div>
+            <Link
+              to={`/cases/${node.slug}`}
+              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-accent text-ink-950 font-bold font-mono text-xs hover:bg-accent/90 transition shadow-[0_0_12px_rgb(56_224_255/0.25)]"
+            >
+              <span>Мөрдлөгийн Canvas нээх</span>
+              <ExternalLink size={14} />
+            </Link>
+          </div>
+        )}
+
+        {!isGhost && !isCase && (
           <div className="flex gap-4 mt-3 data-label border-y border-line/40 py-2">
             <span className="flex items-center gap-1.5 text-text">
               <FileText size={13} className="text-accent" /> {facts ? facts.length : node.fact_count} ФАКТ
@@ -361,57 +439,6 @@ function NodePanel({ node, onClose }) {
                 <AlertTriangle size={13} /> ЗӨРЧИЛТЭЙ
               </span>
             )}
-          </div>
-        )}
-
-        {/* ── Алиас / Нэрийн хувилбар ── */}
-        {!isGhost && node.aliases?.length > 0 && (
-          <div className="mt-3">
-            <div className="terminal-label mb-1">Нэрийн хувилбарууд</div>
-            <div className="flex flex-wrap gap-1">
-              {node.aliases.map((a) => (
-                <span key={a} className="text-[11px] text-dim glass px-2 py-0.5 rounded">
-                  {a}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ── Намтрын Фактууд (Biographical) ── */}
-        {bioFacts.length > 0 && (
-          <div className="mt-4">
-            <div className="terminal-label mb-1.5 text-accent">Намтар & Суурь мэдээлэл ({bioFacts.length})</div>
-            <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-              {bioFacts.slice(0, 5).map((f) => (
-                <div key={f.id} className="text-xs glass p-2 rounded border border-line/30">
-                  <div className="text-dim">{f.fact_text}</div>
-                  {f.role_context && <div className="text-[10px] text-faint font-mono mt-0.5">{f.role_context}</div>}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ── Он цагийн хэлхээс (Chronological Timeline) ── */}
-        {chronoFacts.length > 0 && (
-          <div className="mt-4">
-            <div className="terminal-label mb-1.5 text-accent">Он цагийн хэлхээс ({chronoFacts.length})</div>
-            <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
-              {chronoFacts.slice(0, 6).map((f) => (
-                <div key={f.id} className="text-xs glass p-2 rounded border border-line/30 flex gap-2">
-                  <div className="font-mono text-[10px] text-accent font-bold shrink-0 pt-0.5">
-                    {f.fact_date ? f.fact_date.slice(0, 4) : '---'}
-                  </div>
-                  <div className="flex-1">
-                    <div className="text-text leading-snug">{f.fact_text}</div>
-                    {f.role_context && (
-                      <div className="text-[10px] text-faint mt-0.5 font-mono">{f.role_context}</div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
         )}
 
@@ -441,11 +468,11 @@ function NodePanel({ node, onClose }) {
           </div>
         )}
 
-        {!isGhost && (
+        {!isGhost && !isCase && (
           <div className="mt-5 pt-3 border-t border-line/50 flex items-center justify-between">
             <Link
               to={`/entities/${node.id}`}
-              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-accent/15 border border-accent/40 text-accent hover:bg-accent hover:text-ink-950 font-medium text-sm transition-all"
+              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-accent/15 border border-accent/40 text-accent hover:bg-accent hover:text-ink-950 font-medium text-sm transition-all font-mono"
             >
               <span>Бүтэн профайл руу очих</span>
               <ExternalLink size={15} />

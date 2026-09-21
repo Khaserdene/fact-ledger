@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import or_
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 import models
 import schemas
@@ -478,7 +478,7 @@ def knowledge_graph(db: Session = Depends(get_db)):
         v = n.get(key)
         return int(v[:4]) if v else None
 
-    next_edge_id = max((e["id"] for e in edges), default=0) + 1
+    next_edge_id = max((e["id"] for e in edges if isinstance(e["id"], int)), default=0) + 1
     for gid_node in gov_nodes.values():
         g_from, g_to = years(gid_node, "active_from"), years(gid_node, "active_to")
         if g_from is None:
@@ -489,13 +489,51 @@ def knowledge_graph(db: Session = Depends(get_db)):
                 continue
             if p_from <= (g_to or p_to) and (p_to or p_from) >= g_from:
                 edges.append({
-                    "id": f"gp:{gid_node}-{pid_node}",
-                    "source": gid_node,
-                    "target": pid_node,
+                    "id": f"gp:{gid_node['id']}-{pid_node['id']}",
+                    "source": gid_node["id"],
+                    "target": pid_node["id"],
                     "rel_type": "бүрэн эрхийн хугацаа",
                     "start_date": None,
                     "end_date": None,
                 })
                 next_edge_id += 1
+
+    # ── Cases (Мөрдлөг, дуулиант хэргүүдийг график зангилаа болгон нэгтгэх) ───
+    cases = db.query(models.Case).options(joinedload(models.Case.links)).all()
+    for c in cases:
+        c_node_id = f"case:{c.slug}"
+        # Case links
+        c_links = c.links
+        c_dates = []
+        for l in c_links:
+            if l.entity_id and str(l.entity_id) in entity_ids:
+                e_dates = active.get(l.entity_id) or []
+                c_dates.extend(e_dates)
+                edges.append({
+                    "id": f"cl:{c.id}-{l.id}",
+                    "source": c_node_id,
+                    "target": str(l.entity_id),
+                    "rel_type": l.role or "холбогдогч",
+                    "start_date": None,
+                    "end_date": None,
+                    "is_case_edge": True,
+                })
+
+        nodes.append({
+            "id": c_node_id,
+            "name": c.title,
+            "entity_type": "case",
+            "is_stub": False,
+            "is_case": True,
+            "slug": c.slug,
+            "status": c.status,
+            "tldr_summary": c.description,
+            "description": c.description,
+            "aliases": [c.slug, "Мөрдлөгийн хэрэг"],
+            "fact_count": len(c_links),
+            "has_contradiction": False,
+            "active_from": min(c_dates).isoformat() if c_dates else (c.created_at.date().isoformat() if c.created_at else None),
+            "active_to": max(c_dates).isoformat() if c_dates else (c.updated_at.date().isoformat() if c.updated_at else None),
+        })
 
     return {"nodes": nodes, "edges": edges}
