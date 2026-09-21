@@ -998,20 +998,32 @@ export default function CaseEditor() {
                                     )}
 
                                     {/* Source Link and SHA-256 */}
-                                    <div className="pt-1.5 border-t border-line/50 flex flex-col gap-1 text-[10px] font-mono">
-                                      {fact.source_url ? (
-                                        <a
-                                          href={fact.source_url}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="text-accent hover:underline flex items-center gap-1 truncate"
-                                        >
-                                          <ExternalLink size={11} />
-                                          <span className="truncate">{fact.source_title || fact.source_url}</span>
-                                        </a>
-                                      ) : fact.source_title ? (
-                                        <span className="text-dim truncate">{fact.source_title}</span>
-                                      ) : null}
+                                    <div className="pt-1.5 border-t border-line/50 flex flex-col gap-1.5 text-[10px] font-mono">
+                                      <div className="flex items-center justify-between gap-2">
+                                        {fact.source_id ? (
+                                          <Link
+                                            to={`/sources/${fact.source_id}`}
+                                            className="text-accent hover:underline flex items-center gap-1 truncate font-semibold"
+                                            title="Платформ дээрх эх сурвалж, нотлох эх текст рүү очих"
+                                          >
+                                            <span>⎘ {fact.source_title || 'Эх сурвалж'}</span>
+                                          </Link>
+                                        ) : fact.source_title ? (
+                                          <span className="text-dim truncate">{fact.source_title}</span>
+                                        ) : null}
+
+                                        {fact.source_url && (
+                                          <a
+                                            href={fact.source_url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-dim hover:text-accent flex items-center gap-0.5 shrink-0 text-[9px] bg-surface-1 px-1.5 py-0.5 rounded border border-line"
+                                            title="Анхдагч гадаад эх холбоос нээх"
+                                          >
+                                            Гадаад ↗
+                                          </a>
+                                        )}
+                                      </div>
 
                                       {fact.sha256 && (
                                         <div className="flex items-center gap-1 text-[9px] text-ok font-mono bg-ink-950/80 px-1.5 py-0.5 rounded border border-ok/20">
@@ -1071,19 +1083,35 @@ export default function CaseEditor() {
                                 </div>
                               )}
 
-                              {fact.source_url && (
-                                <div className="p-2 bg-surface-2 border border-line rounded flex items-center justify-between">
-                                  <div className="text-[11px] font-mono text-dim truncate mr-2">
-                                    {fact.source_title || 'Эх сурвалж'}
+                              {(fact.source_id || fact.source_url) && (
+                                <div className="p-2 bg-surface-2 border border-line rounded flex items-center justify-between gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    {fact.source_id ? (
+                                      <Link
+                                        to={`/sources/${fact.source_id}`}
+                                        className="text-xs font-mono font-bold text-accent hover:underline flex items-center gap-1 truncate"
+                                        title="Манай платформ дээрх эх сурвалжийн дэлгэрэнгүй баталгаажсан хуудас руу очих"
+                                      >
+                                        <span>⎘ {fact.source_title || 'Эх сурвалж'}</span>
+                                      </Link>
+                                    ) : (
+                                      <div className="text-[11px] font-mono text-dim truncate">
+                                        {fact.source_title || 'Эх сурвалж'}
+                                      </div>
+                                    )}
                                   </div>
-                                  <a
-                                    href={fact.source_url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="text-xs text-accent hover:underline flex items-center gap-1 shrink-0 font-mono font-bold"
-                                  >
-                                    Линк нээх <ExternalLink size={12} />
-                                  </a>
+
+                                  {fact.source_url && (
+                                    <a
+                                      href={fact.source_url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-xs text-dim hover:text-accent hover:underline flex items-center gap-1 shrink-0 font-mono bg-surface-1 px-2 py-0.5 rounded border border-line"
+                                      title="Анхдагч гадаад эх линк нээх"
+                                    >
+                                      Гадаад ↗
+                                    </a>
+                                  )}
                                 </div>
                               )}
 
@@ -1176,6 +1204,31 @@ export default function CaseEditor() {
                         <p className="text-xs text-text leading-relaxed">
                           {item.text}
                         </p>
+                        <div className="pt-1 border-t border-line/40 flex items-center justify-between gap-2 text-[10px] font-mono">
+                          {item.source_id ? (
+                            <Link
+                              to={`/sources/${item.source_id}`}
+                              className="text-accent hover:underline truncate max-w-[170px]"
+                              title="Платформ дээрх эх сурвалж руу очих"
+                            >
+                              ⎘ {item.source_title || 'Эх сурвалж'}
+                            </Link>
+                          ) : item.source_title ? (
+                            <span className="text-dim truncate max-w-[170px]">{item.source_title}</span>
+                          ) : null}
+
+                          {item.source_url && (
+                            <a
+                              href={item.source_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-dim hover:text-accent text-[9px] bg-surface-1 px-1.5 py-0.5 rounded border border-line shrink-0"
+                            >
+                              Гадаад ↗
+                            </a>
+                          )}
+                        </div>
+
                         {item.sha256 && (
                           <div className="text-[9px] font-mono text-faint truncate">
                             SHA: {item.sha256.slice(0, 16)}…

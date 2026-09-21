@@ -116,6 +116,7 @@ def get_case_subgraph(slug: str, db: Session = Depends(get_db)) -> Dict[str, Any
                 "tags": f.tags,
                 "source_title": f.source_title,
                 "source_url": f.source_url,
+                "source_id": f.source_id,
                 "sha256": f.source.sha256_hash if f.source else None,
             })
 
@@ -412,6 +413,7 @@ def get_entity_activity(
             "sentiment_score": f.sentiment_score,
             "source_title": f.source_title,
             "source_url": f.source_url,
+            "source_id": f.source_id,
             "sha256": f.source.sha256_hash if f.source else None,
             "in_case": f.id in [
                 l.fact_id for l in db.query(models.CaseLink).filter(
