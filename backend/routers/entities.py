@@ -506,7 +506,7 @@ def knowledge_graph(db: Session = Depends(get_db)):
         c_links = c.links
         c_dates = []
         for l in c_links:
-            if l.entity_id and str(l.entity_id) in entity_ids:
+            if l.entity_id and l.entity_id in entity_ids:
                 e_dates = active.get(l.entity_id) or []
                 c_dates.extend(e_dates)
                 edges.append({

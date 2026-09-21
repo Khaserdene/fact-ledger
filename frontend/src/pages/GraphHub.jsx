@@ -70,7 +70,13 @@ export default function GraphHub() {
   }, [data])
 
   const matches = (n) => {
-    if (onlyCases && !n.is_case) return false
+    if (onlyCases && !n.is_case) {
+      // Хэрэв мөрдлөгийн шүүлтүүр идэвхтэй бол мөрдлөгүүд болон тэдэнд холбогдсон субъектүүдийг харуулна
+      const isLinkedToCase = data?.edges?.some(
+        (e) => e.is_case_edge && (e.target === n.id || e.source === n.id)
+      )
+      if (!isLinkedToCase) return false
+    }
 
     if (n.ghost) {
       if (hideGhosts) return false
@@ -324,9 +330,39 @@ function NodePanel({ node, onClose }) {
   const [loadingProfile, setLoadingProfile] = useState(false)
 
   useEffect(() => {
-    if (isGhost || isCase) return
+    if (isGhost) return
     let alive = true
     setLoadingProfile(true)
+
+    if (isCase) {
+      // Мөрдлөгийн хэрэг сонгогдсон үед холбогдох субъектүүдийг авах
+      api
+        .getCase(node.slug)
+        .then((caseData) => {
+          if (!alive) return
+          const items = (caseData.links || [])
+            .filter((l) => l.entity_id)
+            .map((l) => ({
+              id: `cl-${l.id}`,
+              other: { id: l.entity_id, name: l.entity_name },
+              label: l.role || 'холбогдогч',
+              otherName: l.entity_name,
+              period: null,
+            }))
+          setRels(items)
+          setFacts(caseData.facts || [])
+        })
+        .catch(() => {
+          if (alive) {
+            setRels([])
+            setFacts([])
+          }
+        })
+        .finally(() => {
+          if (alive) setLoadingProfile(false)
+        })
+      return () => { alive = false }
+    }
 
     Promise.all([
       api.getEntityRelationships(node.id),
@@ -365,7 +401,7 @@ function NodePanel({ node, onClose }) {
       })
 
     return () => { alive = false }
-  }, [node.id, isGhost, isCase])
+  }, [node.id, node.slug, isGhost, isCase])
 
   return (
     <div
