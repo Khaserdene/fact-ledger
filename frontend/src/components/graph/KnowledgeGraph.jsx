@@ -10,7 +10,7 @@ import {
 } from 'd3-force'
 import { select } from 'd3-selection'
 import { zoom as d3zoom } from 'd3-zoom'
-import { entityType } from '../entity/EntityBadge'
+import { entityType, getPartyInfo, PARTY_COLORS } from '../entity/EntityBadge'
 import {
   Maximize2,
   Minimize2,
@@ -21,7 +21,9 @@ import {
   Layers,
   Calendar,
   Compass,
-  Target
+  Target,
+  Flag,
+  Palette
 } from 'lucide-react'
 
 const TICKS = 340
@@ -48,8 +50,10 @@ export default function KnowledgeGraph({
   yearRange,
   selectedId,
   onSelect,
-  layoutMode = 'force', // 'force' | 'timeline' | 'cluster' | 'radial'
-  onLayoutChange
+  layoutMode = 'force', // 'force' | 'timeline' | 'cluster' | 'party_cluster' | 'radial'
+  onLayoutChange,
+  colorMode = 'type', // 'type' | 'party'
+  onColorModeChange
 }) {
   const wrapRef = useRef(null)
   const svgRef = useRef(null)
@@ -78,7 +82,7 @@ export default function KnowledgeGraph({
     return m
   }, [data])
 
-  // Cluster төвүүдийг тодорхойлох
+  // Төрлөөр бүлэглэх cluster төвүүд
   const clusterCenters = useMemo(() => {
     const w = size.w
     const h = size.h
@@ -94,6 +98,23 @@ export default function KnowledgeGraph({
       party: { x: cx - w * 0.35, y: cy },
       state: { x: cx + w * 0.35, y: cy },
       other: { x: cx, y: cy + h * 0.32 },
+    }
+  }, [size.w, size.h])
+
+  // Намаар бүлэглэх party cluster төвүүд
+  const partyClusterCenters = useMemo(() => {
+    const w = size.w
+    const h = size.h
+    const cx = w / 2
+    const cy = h / 2
+    return {
+      'Монгол Ардын Нам': { x: cx - w * 0.26, y: cy - h * 0.18 },
+      'Ардчилсан Нам': { x: cx + w * 0.26, y: cy - h * 0.18 },
+      'Монгол Ардын Хувьсгалт Нам': { x: cx - w * 0.24, y: cy + h * 0.26 },
+      'ХҮН нам': { x: cx + w * 0.24, y: cy + h * 0.26 },
+      'Иргэний Зориг Ногоон Нам': { x: cx, y: cy + h * 0.32 },
+      'Бусад / Нам бус': { x: cx, y: cy - h * 0.32 },
+      case: { x: cx, y: cy },
     }
   }, [size.w, size.h])
 
@@ -165,6 +186,35 @@ export default function KnowledgeGraph({
             const c = clusterCenters[d.entity_type] || clusterCenters.other
             return c.y
           }).strength(0.4)
+        )
+        .force('center', forceCenter(size.w / 2, size.h / 2).strength(0.05))
+
+    } else if (layoutMode === 'party_cluster') {
+      // Party Cluster Layout: Нам бүрээр бөөгнөрүүлэх хүч
+      sim
+        .force(
+          'link',
+          forceLink(links).id((d) => d.id).distance(90).strength(0.3)
+        )
+        .force('charge', forceManyBody().strength(-280))
+        .force('collide', forceCollide().radius((d) => nodeRadius(d) + 24).iterations(2))
+        .force(
+          'x',
+          forceX((d) => {
+            if (d.is_case) return partyClusterCenters.case.x
+            const p = d.party_name || 'Бусад / Нам бус'
+            const c = partyClusterCenters[p] || partyClusterCenters['Бусад / Нам бус']
+            return c.x
+          }).strength(0.5)
+        )
+        .force(
+          'y',
+          forceY((d) => {
+            if (d.is_case) return partyClusterCenters.case.y
+            const p = d.party_name || 'Бусад / Нам бус'
+            const c = partyClusterCenters[p] || partyClusterCenters['Бусад / Нам бус']
+            return c.y
+          }).strength(0.5)
         )
         .force('center', forceCenter(size.w / 2, size.h / 2).strength(0.05))
 
@@ -375,7 +425,8 @@ export default function KnowledgeGraph({
           {[
             { id: 'force', label: 'Сүлжээ', Icon: Compass, tip: 'Чөлөөт таталцлын физик сүлжээ' },
             { id: 'timeline', label: 'Хронологи', Icon: Calendar, tip: 'Он цагийн дарааллаар эрэмбэлэх' },
-            { id: 'cluster', label: 'Кластер', Icon: Layers, tip: 'Бүлэг ба төрлөөр нь бүлэглэх' },
+            { id: 'cluster', label: 'Төрлөөр', Icon: Layers, tip: 'Бүлэг ба төрлөөр нь бүлэглэх' },
+            { id: 'party_cluster', label: 'Намаар', Icon: Flag, tip: 'Улс төрийн намуудаар нь кластерлах' },
             { id: 'radial', label: 'Төвлөрсөн', Icon: Target, tip: 'Сонгосон субъектийг тойруулах' },
           ].map((mode) => (
             <button
@@ -392,6 +443,22 @@ export default function KnowledgeGraph({
               <span className="hidden sm:inline">{mode.label}</span>
             </button>
           ))}
+        </div>
+
+        {/* Өнгөний горим солих: Төрлөөр эсвэл Намаар */}
+        <div className="flex items-center gap-1 pl-2 border-l border-line/60">
+          <button
+            onClick={() => onColorModeChange && onColorModeChange(colorMode === 'party' ? 'type' : 'party')}
+            className={`px-2.5 py-1 text-xs font-mono rounded flex items-center gap-1.5 transition border ${
+              colorMode === 'party'
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-[0_0_12px_rgba(245,158,11,0.25)] font-bold'
+                : 'text-dim hover:text-text hover:bg-surface-2 border-transparent'
+            }`}
+            title="График зангилаануудыг харьяалагдах намынх нь өнгөөр (МАН улаан, АН цэнхэр г.м) ялгах"
+          >
+            <Palette size={13} className={colorMode === 'party' ? 'text-amber-400' : 'text-dim'} />
+            <span>{colorMode === 'party' ? 'Намын өнгө' : 'Төрлийн өнгө'}</span>
+          </button>
         </div>
       </div>
 
@@ -499,7 +566,12 @@ export default function KnowledgeGraph({
               const isNeighbor = neighborIds ? neighborIds.has(d.id) : true
               const opacity = neighborIds ? (isNeighbor ? 1 : 0.12) : 1
               const tInfo = entityType(d.entity_type)
-              const color = d.is_case ? '#f43f5e' : tInfo.color || '#94a3b8'
+              const pInfo = d.party_name ? getPartyInfo(d.party_name) : getPartyInfo('Бусад / Нам бус')
+              const color = d.is_case
+                ? '#f43f5e'
+                : colorMode === 'party'
+                ? (d.party_name ? pInfo.color : '#64748b')
+                : tInfo.color || '#94a3b8'
 
               return (
                 <g
@@ -610,10 +682,29 @@ export default function KnowledgeGraph({
         </g>
       </svg>
 
-      {/* Quick bottom tooltip */}
-      <div className="absolute bottom-3 left-3 bg-surface-1/90 border border-line backdrop-blur px-3 py-1.5 rounded text-[11px] font-mono text-dim pointer-events-none max-w-sm">
+      {/* Quick bottom tooltip & Party Legend */}
+      <div className="absolute bottom-3 left-3 bg-surface-1/90 border border-line backdrop-blur px-3 py-2 rounded-lg text-[11px] font-mono text-dim pointer-events-none max-w-md shadow-xl">
         {selectedId ? (
-          <span className="text-text">Сонгосон: <b className="text-accent">{nodeById.get(selectedId)?.name}</b></span>
+          <div>
+            <span className="text-text">Сонгосон: <b className="text-accent">{nodeById.get(selectedId)?.name}</b></span>
+            {nodeById.get(selectedId)?.party_name && (
+              <span className="ml-2 font-mono" style={{ color: getPartyInfo(nodeById.get(selectedId)?.party_name).color }}>
+                ⚑ {nodeById.get(selectedId)?.party_name}
+              </span>
+            )}
+          </div>
+        ) : colorMode === 'party' ? (
+          <div>
+            <span className="font-bold text-text block mb-1 text-[10px] uppercase text-amber-400">Намуудын өнгөний код:</span>
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /> МАН</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500" /> АН</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500" /> МАХН</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-500" /> ХҮН</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> ИЗНН</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-500" /> Нам бус</span>
+            </div>
+          </div>
         ) : (
           <span>Node дээр дарж фокуслах ба хамаарлыг шалгана уу</span>
         )}

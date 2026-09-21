@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
-import { CalendarClock } from 'lucide-react'
-import EntityBadge, { ENTITY_TYPES } from '../components/entity/EntityBadge'
+import { CalendarClock, Flag } from 'lucide-react'
+import EntityBadge, { ENTITY_TYPES, getPartyInfo } from '../components/entity/EntityBadge'
 import Timeline from '../components/timeline/Timeline'
 import Badge from '../components/ui/Badge'
 import Button from '../components/ui/Button'
@@ -197,6 +197,24 @@ export default function EntityDetail() {
               <div className="flex items-center gap-3 flex-wrap">
                 <h1 className="font-display text-3xl font-bold text-text">{entity.name}</h1>
                 <EntityBadge type={entity.entity_type} />
+                {entity.party_name && (() => {
+                  const pInfo = getPartyInfo(entity.party_name)
+                  return (
+                    <span
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-semibold border transition-all"
+                      style={{
+                        backgroundColor: pInfo.bg,
+                        borderColor: pInfo.border,
+                        color: pInfo.color,
+                        boxShadow: `0 0 10px ${pInfo.border}`
+                      }}
+                      title={pInfo.name}
+                    >
+                      <Flag size={11} style={{ color: pInfo.color }} />
+                      <span>{pInfo.name}</span>
+                    </span>
+                  )
+                })()}
                 {entity.is_stub && <Badge>Түүхий</Badge>}
               </div>
               {entity.aliases.length > 0 && (

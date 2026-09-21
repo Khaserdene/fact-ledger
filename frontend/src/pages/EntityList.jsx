@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
-import { Users } from 'lucide-react'
-import EntityBadge, { ENTITY_TYPES } from '../components/entity/EntityBadge'
+import { Users, Flag } from 'lucide-react'
+import EntityBadge, { ENTITY_TYPES, getPartyInfo } from '../components/entity/EntityBadge'
 import Button from '../components/ui/Button'
 import EmptyState from '../components/ui/EmptyState'
 import { Input, Label, Select } from '../components/ui/Field'
@@ -190,19 +190,30 @@ export default function EntityList() {
           >
             Бүгд
           </button>
-          {partyCounts.map(([name, count]) => (
-            <button
-              key={name}
-              onClick={() => setPartyFilter(partyFilter === name ? '' : name)}
-              className={`text-xs px-3 py-1.5 rounded-full border transition-colors font-mono ${
-                partyFilter === name
-                  ? 'bg-accent-dim text-accent border-accent-line'
-                  : 'border-line text-faint hover:text-dim'
-              }`}
-            >
-              {name} <span className="text-faint">({count})</span>
-            </button>
-          ))}
+          {partyCounts.map(([name, count]) => {
+            const pInfo = getPartyInfo(name)
+            const isActive = partyFilter === name
+            return (
+              <button
+                key={name}
+                onClick={() => setPartyFilter(isActive ? '' : name)}
+                className="text-xs px-3 py-1.5 rounded-full border transition-all font-mono flex items-center gap-1.5"
+                style={{
+                  backgroundColor: isActive ? pInfo.bg : 'transparent',
+                  borderColor: isActive ? pInfo.border : 'rgba(255,255,255,0.08)',
+                  color: isActive ? pInfo.color : '#94a3b8',
+                  boxShadow: isActive ? `0 0 10px ${pInfo.border}` : 'none'
+                }}
+              >
+                <span
+                  className="w-2 h-2 rounded-full shrink-0"
+                  style={{ backgroundColor: pInfo.color }}
+                />
+                <span>{pInfo.short || name}</span>
+                <span className="text-faint">({count})</span>
+              </button>
+            )
+          })}
         </div>
       )}
 
@@ -212,40 +223,61 @@ export default function EntityList() {
         </EmptyState>
       ) : (
         <div className="grid md:grid-cols-2 gap-3">
-          {filtered.map((e) => (
-            <div key={e.id} className="glass p-4 group relative">
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <EntityBadge type={e.entity_type} />
-                <button
-                  onClick={() => handleDelete(e)}
-                  className="text-faint hover:text-danger opacity-0 group-hover:opacity-100 transition-all"
-                  title="Устгах"
+          {filtered.map((e) => {
+            const pInfo = e.party_name ? getPartyInfo(e.party_name) : null
+            return (
+              <div key={e.id} className="glass p-4 group relative">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <EntityBadge type={e.entity_type} />
+                    {pInfo && (
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono border"
+                        style={{
+                          backgroundColor: pInfo.bg,
+                          borderColor: pInfo.border,
+                          color: pInfo.color
+                        }}
+                        title={pInfo.name}
+                      >
+                        <Flag size={9} style={{ color: pInfo.color }} />
+                        <span>{pInfo.short}</span>
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => handleDelete(e)}
+                    className="text-faint hover:text-danger opacity-0 group-hover:opacity-100 transition-all"
+                    title="Устгах"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <Link
+                  to={`/entities/${e.id}`}
+                  className="font-display font-semibold text-lg text-text hover:text-accent transition-colors block leading-snug"
                 >
-                  ✕
-                </button>
+                  {e.name}
+                </Link>
+                {e.aliases.length > 0 && (
+                  <p className="text-xs text-faint mt-1.5 leading-relaxed">
+                    {e.aliases.slice(0, 3).map((a) => a.alias).join(' · ')}
+                    {e.aliases.length > 3 && ` +${e.aliases.length - 3}`}
+                  </p>
+                )}
+                {e.party_name && (
+                  <p className="text-xs mt-1.5 font-mono flex items-center gap-1" style={{ color: pInfo?.color || '#eab308' }}>
+                    <span>⚑</span> <span>{e.party_name}</span>
+                  </p>
+                )}
+                {e.is_stub && (
+                  <span className="inline-block mt-2 text-[10px] uppercase tracking-wider text-faint border border-line rounded px-1.5 py-0.5">
+                    Түүхий
+                  </span>
+                )}
               </div>
-              <Link
-                to={`/entities/${e.id}`}
-                className="font-display font-semibold text-lg text-text hover:text-accent transition-colors block leading-snug"
-              >
-                {e.name}
-              </Link>
-              {e.aliases.length > 0 && (
-                <p className="text-xs text-faint mt-1.5 leading-relaxed">
-                  {e.aliases.slice(0, 3).map((a) => a.alias).join(' · ')}
-                  {e.aliases.length > 3 && ` +${e.aliases.length - 3}`}
-                </p>
-              )}
-              {e.party_name && (
-                <p className="text-xs text-warn/80 mt-1.5 font-mono">⚑ {e.party_name}</p>
-              )}
-              {e.is_stub && (
-                <span className="inline-block mt-2 text-[10px] uppercase tracking-wider text-faint border border-line rounded px-1.5 py-0.5">
-                  Түүхий
-                </span>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

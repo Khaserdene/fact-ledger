@@ -19,6 +19,65 @@ export const ENTITY_TYPES = {
 // График дээр гаргах дараалал
 export const TYPE_ORDER = ['case', 'person', 'government', 'parliament', 'party', 'org', 'company', 'fund', 'state', 'school', 'location', 'other']
 
+export const PARTY_COLORS = {
+  'Монгол Ардын Нам': {
+    name: 'Монгол Ардын Нам',
+    short: 'МАН',
+    color: '#ef4444', // Red
+    bg: 'rgba(239, 68, 68, 0.15)',
+    border: 'rgba(239, 68, 68, 0.4)',
+  },
+  'Ардчилсан Нам': {
+    name: 'Ардчилсан Нам',
+    short: 'АН',
+    color: '#3b82f6', // Blue
+    bg: 'rgba(59, 130, 246, 0.15)',
+    border: 'rgba(59, 130, 246, 0.4)',
+  },
+  'Монгол Ардын Хувьсгалт Нам': {
+    name: 'Монгол Ардын Хувьсгалт Нам',
+    short: 'МАХН',
+    color: '#f97316', // Orange
+    bg: 'rgba(249, 115, 22, 0.15)',
+    border: 'rgba(249, 115, 22, 0.4)',
+  },
+  'ХҮН нам': {
+    name: 'ХҮН нам',
+    short: 'ХҮН',
+    color: '#a855f7', // Purple
+    bg: 'rgba(168, 85, 247, 0.15)',
+    border: 'rgba(168, 85, 247, 0.4)',
+  },
+  'Иргэний Зориг Ногоон Нам': {
+    name: 'Иргэний Зориг Ногоон Нам',
+    short: 'ИЗНН',
+    color: '#10b981', // Emerald / Green
+    bg: 'rgba(16, 185, 129, 0.15)',
+    border: 'rgba(16, 185, 129, 0.4)',
+  },
+  'Бусад / Нам бус': {
+    name: 'Бусад / Нам бус',
+    short: 'Нам бус',
+    color: '#64748b', // Slate
+    bg: 'rgba(100, 116, 139, 0.15)',
+    border: 'rgba(100, 116, 139, 0.4)',
+  },
+}
+
+export function getPartyInfo(partyName) {
+  if (!partyName) return PARTY_COLORS['Бусад / Нам бус']
+  for (const [key, val] of Object.entries(PARTY_COLORS)) {
+    if (partyName.includes(key) || key.includes(partyName)) return val
+  }
+  return {
+    name: partyName,
+    short: partyName.length > 6 ? partyName.slice(0, 4) : partyName,
+    color: '#eab308',
+    bg: 'rgba(234, 179, 8, 0.15)',
+    border: 'rgba(234, 179, 8, 0.4)',
+  }
+}
+
 export function entityType(type) {
   return ENTITY_TYPES[type] || ENTITY_TYPES.other
 }

@@ -14,10 +14,12 @@ import {
   Layers,
   Calendar,
   Compass,
-  Target
+  Target,
+  Flag,
+  Palette
 } from 'lucide-react'
 import { api } from '../api'
-import { ENTITY_TYPES, entityType, TYPE_ORDER } from '../components/entity/EntityBadge'
+import { ENTITY_TYPES, entityType, TYPE_ORDER, getPartyInfo, PARTY_COLORS } from '../components/entity/EntityBadge'
 import KnowledgeGraph from '../components/graph/KnowledgeGraph'
 import GlassCard from '../components/ui/GlassCard'
 import Spinner from '../components/ui/Spinner'
@@ -27,6 +29,8 @@ export default function GraphHub() {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
   const [typeFilter, setTypeFilter] = useState(new Set())
+  const [partyFilter, setPartyFilter] = useState(new Set())
+  const [colorMode, setColorMode] = useState('type') // 'type' | 'party'
   const [onlyContradictions, setOnlyContradictions] = useState(false)
   const [onlyCases, setOnlyCases] = useState(false)
   const [hideGhosts, setHideGhosts] = useState(false)
@@ -69,6 +73,17 @@ export default function GraphHub() {
     return c
   }, [data])
 
+  const partyCounts = useMemo(() => {
+    if (!data) return []
+    const countsMap = {}
+    for (const n of data.nodes) {
+      if (n.ghost || n.is_case) continue
+      const p = n.party_name || 'Бусад / Нам бус'
+      countsMap[p] = (countsMap[p] || 0) + 1
+    }
+    return Object.entries(countsMap).sort((a, b) => b[1] - a[1])
+  }, [data])
+
   const matches = (n) => {
     if (onlyCases && !n.is_case) {
       // Хэрэв мөрдлөгийн шүүлтүүр идэвхтэй бол мөрдлөгүүд болон тэдэнд холбогдсон субъектүүдийг харуулна
@@ -85,9 +100,16 @@ export default function GraphHub() {
       if (typeFilter.size && !typeFilter.has(n.entity_type)) return false
       if (onlyContradictions && !n.has_contradiction) return false
     }
+
+    // Намын шүүлтүүр
+    if (partyFilter.size > 0 && !n.is_case && !n.ghost) {
+      const p = n.party_name || 'Бусад / Нам бус'
+      if (!partyFilter.has(p)) return false
+    }
+
     if (query) {
       const q = query.toLowerCase()
-      const hay = [n.name, ...(n.aliases || [])].join(' ').toLowerCase()
+      const hay = [n.name, n.party_name, ...(n.aliases || [])].filter(Boolean).join(' ').toLowerCase()
       if (!hay.includes(q)) return false
     }
     // Хугацааны шүүлт: огноотой node зөвхөн цонхтой давхцах үед
@@ -103,7 +125,7 @@ export default function GraphHub() {
   const visibleNodeIds = useMemo(() => {
     if (!data) return []
     return data.nodes.filter(matches).map((n) => n.id)
-  }, [data, typeFilter, onlyContradictions, onlyCases, hideGhosts, query, yearRange])
+  }, [data, typeFilter, partyFilter, onlyContradictions, onlyCases, hideGhosts, query, yearRange])
 
   if (error)
     return (
@@ -203,7 +225,7 @@ export default function GraphHub() {
               </button>
             )}
           </div>
-          <div className="max-h-56 overflow-y-auto space-y-1 pr-1">
+          <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
             {TYPE_ORDER.filter((t) => counts[t]).map((t) => {
               const info = entityType(t)
               const active = typeFilter.has(t)
@@ -229,6 +251,56 @@ export default function GraphHub() {
                   />
                   <span className="flex-1 text-left truncate">{info.label}</span>
                   <span className="data-label">{counts[t]}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* ── Намын шүүлтүүр & Будалт ── */}
+        <div className="space-y-1.5 pt-2 border-t border-line/60">
+          <div className="flex items-center justify-between">
+            <span className="terminal-label flex items-center gap-1.5">
+              <Flag size={11} className="text-warn" /> НАМААР ШҮҮХ
+            </span>
+            {partyFilter.size > 0 && (
+              <button
+                onClick={() => setPartyFilter(new Set())}
+                className="text-[10px] font-mono text-accent hover:underline"
+              >
+                Бүгдийг сонгох
+              </button>
+            )}
+          </div>
+
+          <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
+            {partyCounts.map(([name, count]) => {
+              const pInfo = getPartyInfo(name)
+              const active = partyFilter.has(name)
+              const toggle = () => {
+                const next = new Set(partyFilter)
+                if (active) next.delete(name)
+                else next.add(name)
+                setPartyFilter(next)
+              }
+              return (
+                <button
+                  key={name}
+                  onClick={toggle}
+                  className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs font-mono border transition-all"
+                  style={{
+                    backgroundColor: active ? pInfo.bg : 'transparent',
+                    borderColor: active ? pInfo.border : 'transparent',
+                    color: active ? '#ffffff' : '#94a3b8',
+                    boxShadow: active ? `0 0 10px ${pInfo.border}` : 'none'
+                  }}
+                >
+                  <span
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ background: pInfo.color, boxShadow: `0 0 8px ${pInfo.color}` }}
+                  />
+                  <span className="flex-1 text-left truncate">{pInfo.name}</span>
+                  <span className="data-label">{count}</span>
                 </button>
               )
             })}
@@ -311,6 +383,8 @@ export default function GraphHub() {
           onSelect={setSelected}
           layoutMode={layoutMode}
           onLayoutChange={setLayoutMode}
+          colorMode={colorMode}
+          onColorModeChange={setColorMode}
         />
 
         {selected && (
@@ -431,8 +505,27 @@ function NodePanel({ node, onClose }) {
 
         <h2 className="font-display font-bold text-xl leading-snug pr-6 text-text">{node.name}</h2>
 
+        {node.party_name && (() => {
+          const pInfo = getPartyInfo(node.party_name)
+          return (
+            <div className="mt-1.5 flex items-center gap-1.5">
+              <span
+                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-medium border"
+                style={{
+                  backgroundColor: pInfo.bg,
+                  borderColor: pInfo.border,
+                  color: pInfo.color,
+                }}
+              >
+                <Flag size={10} style={{ color: pInfo.color }} />
+                <span>{pInfo.name}</span>
+              </span>
+            </div>
+          )
+        })()}
+
         {node.active_from && (
-          <p className="data-label mt-1 text-accent">
+          <p className="data-label mt-1.5 text-accent">
             {node.active_from.slice(0, 4)} — {node.active_to ? node.active_to.slice(0, 4) : 'одоо'}
           </p>
         )}

@@ -28,6 +28,73 @@ def entity_names(entity: models.Entity) -> set[str]:
     return {entity.name, *entity.alias_list}
 
 
+
+def resolve_party(entity: models.Entity, party_map: Dict[int, str]) -> Optional[str]:
+    """Субъектийн улс төрийн намын харьяаллыг холбоос, албан тушаал, тайлбараас нарийвчлан тогтооно."""
+    if entity.entity_type == "party":
+        return entity.name
+    
+    known_leaders = {
+        "Нацагийн Багабанди": "Монгол Ардын Хувьсгалт Нам",
+        "Пунсалмаагийн Очирбат": "Ардчилсан Нам",
+        "Намбарын Энхбаяр": "Монгол Ардын Хувьсгалт Нам",
+        "Юмжаагийн Цэдэнбал": "Монгол Ардын Хувьсгалт Нам",
+        "Жамбын Батмөнх": "Монгол Ардын Хувьсгалт Нам",
+        "Думаагийн Содном": "Монгол Ардын Хувьсгалт Нам",
+        "Пунцагийн Жасрай": "Монгол Ардын Хувьсгалт Нам",
+        "Раднаасумбэрэлийн Гончигдорж": "Ардчилсан Нам",
+        "Мэндсайханы Энхсайхан": "Ардчилсан Нам",
+        "Цахиагийн Элбэгдорж": "Ардчилсан Нам",
+        "Чимэдийн Сайханбилэг": "Ардчилсан Нам",
+        "Норовын Алтанхуяг": "Ардчилсан Нам",
+        "Халтмаагийн Баттулга": "Ардчилсан Нам",
+        "Санжаагийн Баяр": "Монгол Ардын Хувьсгалт Нам",
+        "Сүхбаатарын Батболд": "Монгол Ардын Нам",
+        "Ухнаагийн Хүрэлсүх": "Монгол Ардын Нам",
+        "Лувсаннамсрайн Оюун-Эрдэнэ": "Монгол Ардын Нам",
+        "Миеэгомбын Энхболд": "Монгол Ардын Нам",
+        "Гомбожавын Занданшатар": "Монгол Ардын Нам",
+        "Тогмидын Доржханд": "ХҮН нам",
+        "Санжаасүрэнгийн Оюун": "Иргэний Зориг Ногоон Нам",
+    }
+    if entity.name in known_leaders:
+        return known_leaders[entity.name]
+
+    if entity.id in party_map:
+        return party_map[entity.id]
+
+    desc = entity.description or ""
+    if "Монгол Ардын Нам" in desc or "МАН-ын" in desc or "МАН-аас" in desc:
+        return "Монгол Ардын Нам"
+    if "Ардчилсан Нам" in desc or "АН-ын" in desc or "АН-аас" in desc or "Ардчилсан холбоо" in desc:
+        return "Ардчилсан Нам"
+    if "Монгол Ардын Хувьсгалт Нам" in desc or "МАХН-ын" in desc or "МАХН-аас" in desc:
+        return "Монгол Ардын Хувьсгалт Нам"
+    if "ХҮН" in desc or "Зөв Хүн" in desc:
+        return "ХҮН нам"
+    if "Иргэний Зориг" in desc:
+        return "Иргэний Зориг Ногоон Нам"
+
+    return None
+
+
+def _build_party_map(db: Session) -> Dict[int, str]:
+    parties = db.query(models.Entity).filter(models.Entity.entity_type == "party").all()
+    party_ids = [p.id for p in parties]
+    party_names = {p.id: p.name for p in parties}
+    party_map: Dict[int, str] = {}
+    if party_ids:
+        rels = (
+            db.query(models.Relationship)
+            .filter(models.Relationship.target_entity_id.in_(party_ids))
+            .order_by(models.Relationship.id)
+            .all()
+        )
+        for r in rels:
+            party_map.setdefault(r.source_entity_id, party_names.get(r.target_entity_id, ""))
+    return party_map
+
+
 # ── CRUD ─────────────────────────────────────────────────────────────────────
 
 @router.get("/entities", response_model=List[schemas.EntityOut])
@@ -56,25 +123,9 @@ def list_entities(
         ))
     result = query.order_by(models.Entity.name).all()
 
-    # Намын холбоо: person → party relationships-ээс нэр бүрд тогтооно
-    parties = db.query(models.Entity).filter(models.Entity.entity_type == "party").all()
-    party_ids = [p.id for p in parties]
-    party_names = {p.id: p.name for p in parties}
-    party_map: Dict[int, str] = {}
-    if party_ids:
-        rels = (
-            db.query(models.Relationship)
-            .filter(models.Relationship.target_entity_id.in_(party_ids))
-            .order_by(models.Relationship.id)
-            .all()
-        )
-        for r in rels:
-            party_map.setdefault(r.source_entity_id, party_names.get(r.target_entity_id, ""))
+    party_map = _build_party_map(db)
     for e in result:
-        if e.entity_type == "party":
-            e.party_name = e.name
-        else:
-            e.party_name = party_map.get(e.id) or None
+        e.party_name = resolve_party(e, party_map)
     return result
 
 
@@ -112,7 +163,10 @@ def _add_aliases(db: Session, entity: models.Entity, aliases: List[str], kind: O
 
 @router.get("/entities/{entity_id}", response_model=schemas.EntityOut)
 def get_entity(entity_id: int, db: Session = Depends(get_db)):
-    return get_entity_or_404(db, entity_id)
+    entity = get_entity_or_404(db, entity_id)
+    party_map = _build_party_map(db)
+    entity.party_name = resolve_party(entity, party_map)
+    return entity
 
 
 @router.patch("/entities/{entity_id}", response_model=schemas.EntityOut)
@@ -132,6 +186,8 @@ def update_entity(entity_id: int, payload: schemas.EntityUpdate, db: Session = D
         entity.is_stub = payload.is_stub
     db.commit()
     db.refresh(entity)
+    party_map = _build_party_map(db)
+    entity.party_name = resolve_party(entity, party_map)
     return entity
 
 
@@ -419,6 +475,7 @@ def knowledge_graph(db: Session = Depends(get_db)):
         if r.target_entity_id:
             track(r.target_entity_id, r.start_date, r.end_date)
 
+    party_map = _build_party_map(db)
     nodes = []
     for e in entities:
         dates = active.get(e.id) or []
@@ -426,6 +483,7 @@ def knowledge_graph(db: Session = Depends(get_db)):
             "id": str(e.id),
             "name": e.name,
             "entity_type": e.entity_type,
+            "party_name": resolve_party(e, party_map),
             "is_stub": e.is_stub,
             "tldr_summary": e.tldr_summary,
             "description": e.description,
