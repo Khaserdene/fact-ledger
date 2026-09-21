@@ -197,7 +197,7 @@ body {
 
 /* ── Knowledge graph ── */
 .graph-node-label {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans), sans-serif;
   font-size: 10px;
   fill: var(--color-dim);
   pointer-events: none;

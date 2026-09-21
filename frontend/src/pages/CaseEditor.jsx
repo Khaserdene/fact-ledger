@@ -241,16 +241,16 @@ export default function CaseEditor() {
         forceLink(links)
           .id((d) => d.id)
           .distance((d) => {
-            if (d.source.is_center || d.target.is_center) return 150
-            if (d.is_fact_edge || d.source.entity_type === 'fact' || d.target.entity_type === 'fact') return 65
-            if (d.is_master_rel) return 90
-            return 95
+            if (d.source.is_center || d.target.is_center) return 180
+            if (d.is_fact_edge || d.source.entity_type === 'fact' || d.target.entity_type === 'fact') return 80
+            if (d.is_master_rel) return 120
+            return 115
           })
-          .strength(0.6)
+          .strength(0.5)
       )
-      .force('charge', forceManyBody().strength(-280))
-      .force('collide', forceCollide().radius(28))
-      .force('center', forceCenter(size.w / 2, size.h / 2).strength(0.08))
+      .force('charge', forceManyBody().strength(-450))
+      .force('collide', forceCollide().radius((d) => (d.is_center ? 45 : d.entity_type === 'fact' ? 24 : 38)).iterations(2))
+      .force('center', forceCenter(size.w / 2, size.h / 2).strength(0.06))
       .stop()
 
     for (let i = 0; i < TICKS; i++) sim.tick()
@@ -628,7 +628,7 @@ export default function CaseEditor() {
                 })}
               </g>
 
-              {/* Nodes */}
+              {/* Nodes (Circles and Icons) */}
               <g className="nodes">
                 {simNodes.current.map((node) => {
                   if (!isNodeVisibleInTime(node)) return null
@@ -638,7 +638,7 @@ export default function CaseEditor() {
                   const opacity = isConnected ? 1 : 0.15
                   const color = TYPE_COLORS[node.entity_type] || TYPE_COLORS.other
                   const isCenter = !!node.is_center
-                  const radius = isCenter ? 22 : node.entity_type === 'fact' ? 10 : 16
+                  const radius = isCenter ? 24 : node.entity_type === 'fact' ? 11 : 17
 
                   return (
                     <g
@@ -684,18 +684,54 @@ export default function CaseEditor() {
                       >
                         {isCenter ? '★' : node.entity_type === 'fact' ? 'F' : node.name?.charAt(0) || '•'}
                       </text>
+                    </g>
+                  )
+                })}
+              </g>
 
-                      {/* Label below */}
+              {/* Node Labels (Always rendered on top layer to prevent overlapping by other circles) */}
+              <g className="node-labels pointer-events-none">
+                {simNodes.current.map((node) => {
+                  if (!isNodeVisibleInTime(node)) return null
+
+                  const isSelected = selectedNode && String(selectedNode.id) === String(node.id)
+                  const isConnected = !connectedNodeIds || connectedNodeIds.has(String(node.id))
+                  const isHovered = hoverNodeId === node.id
+                  const opacity = isConnected ? 1 : 0.15
+                  const isCenter = !!node.is_center
+                  const radius = isCenter ? 24 : node.entity_type === 'fact' ? 11 : 17
+                  const label = node.name?.length > 22 ? node.name.slice(0, 20) + '…' : node.name
+
+                  return (
+                    <g
+                      key={`lbl-${node.id}`}
+                      transform={`translate(${node.x}, ${node.y + radius + 13})`}
+                      opacity={opacity}
+                      className="transition-opacity duration-200"
+                    >
+                      {/* Text halo stroke to prevent line/grid clutter under the text */}
                       <text
-                        y={radius + 12}
                         textAnchor="middle"
-                        fill={isSelected ? '#38e0ff' : '#cbd5e1'}
+                        fill="none"
+                        stroke="#04070a"
+                        strokeWidth="3.5"
+                        strokeLinejoin="round"
                         fontSize="10"
                         fontFamily="var(--font-sans), sans-serif"
-                        fontWeight={isSelected ? '600' : 'normal'}
-                        className="pointer-events-none drop-shadow"
+                        fontWeight={isSelected || isHovered ? '600' : '500'}
                       >
-                        {node.name?.length > 20 ? node.name.slice(0, 18) + '…' : node.name}
+                        {label}
+                      </text>
+
+                      {/* Foreground label */}
+                      <text
+                        textAnchor="middle"
+                        fill={isSelected || isHovered ? '#38e0ff' : '#d7e7ee'}
+                        fontSize="10"
+                        fontFamily="var(--font-sans), sans-serif"
+                        fontWeight={isSelected || isHovered ? '600' : 'normal'}
+                      >
+                        {label}
                       </text>
                     </g>
                   )

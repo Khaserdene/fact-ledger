@@ -128,10 +128,10 @@ export default function KnowledgeGraph({
       sim
         .force(
           'link',
-          forceLink(links).id((d) => d.id).distance(60).strength(0.2)
+          forceLink(links).id((d) => d.id).distance(75).strength(0.25)
         )
-        .force('charge', forceManyBody().strength(-120))
-        .force('collide', forceCollide().radius((d) => nodeRadius(d) + 8))
+        .force('charge', forceManyBody().strength(-200))
+        .force('collide', forceCollide().radius((d) => nodeRadius(d) + 20).iterations(2))
         .force(
           'x',
           forceX((d) => {
@@ -140,7 +140,7 @@ export default function KnowledgeGraph({
             return size.w * 0.12 + progress * (size.w * 0.76)
           }).strength(0.85)
         )
-        .force('y', forceY(size.h / 2).strength(0.1))
+        .force('y', forceY(size.h / 2).strength(0.12))
         .force('center', forceCenter(size.w / 2, size.h / 2).strength(0.04))
 
     } else if (layoutMode === 'cluster') {
@@ -148,10 +148,10 @@ export default function KnowledgeGraph({
       sim
         .force(
           'link',
-          forceLink(links).id((d) => d.id).distance(75).strength(0.35)
+          forceLink(links).id((d) => d.id).distance(90).strength(0.35)
         )
-        .force('charge', forceManyBody().strength(-180))
-        .force('collide', forceCollide().radius((d) => nodeRadius(d) + 12))
+        .force('charge', forceManyBody().strength(-280))
+        .force('collide', forceCollide().radius((d) => nodeRadius(d) + 24).iterations(2))
         .force(
           'x',
           forceX((d) => {
@@ -182,10 +182,10 @@ export default function KnowledgeGraph({
       sim
         .force(
           'link',
-          forceLink(links).id((d) => d.id).distance(90).strength(0.4)
+          forceLink(links).id((d) => d.id).distance(110).strength(0.45)
         )
-        .force('charge', forceManyBody().strength(-200))
-        .force('collide', forceCollide().radius((d) => nodeRadius(d) + 10))
+        .force('charge', forceManyBody().strength(-300))
+        .force('collide', forceCollide().radius((d) => nodeRadius(d) + 24).iterations(2))
         .force(
           'r',
           forceX((d) => {
@@ -200,10 +200,10 @@ export default function KnowledgeGraph({
       sim
         .force(
           'link',
-          forceLink(links).id((d) => d.id).distance((d) => (d.source.is_case || d.target.is_case ? 140 : 85)).strength(0.5)
+          forceLink(links).id((d) => d.id).distance((d) => (d.source.is_case || d.target.is_case ? 150 : 100)).strength(0.5)
         )
-        .force('charge', forceManyBody().strength(-220))
-        .force('collide', forceCollide().radius((d) => nodeRadius(d) + 14))
+        .force('charge', forceManyBody().strength(-320))
+        .force('collide', forceCollide().radius((d) => nodeRadius(d) + 22).iterations(2))
         .force('x', forceX(size.w / 2).strength(0.04))
         .force('y', forceY(size.h / 2).strength(0.06))
         .force('center', forceCenter(size.w / 2, size.h / 2).strength(0.05))
@@ -490,7 +490,7 @@ export default function KnowledgeGraph({
             })}
           </g>
 
-          {/* ── Nodes ── */}
+          {/* ── Nodes (Circles & Glyphs) ── */}
           <g className="nodes">
             {nodes.map((d) => {
               if (!nodeVisible(d) || d.x == null) return null
@@ -557,21 +557,52 @@ export default function KnowledgeGraph({
                   >
                     {d.is_case ? '★' : d.name?.charAt(0) || '•'}
                   </text>
+                </g>
+              )
+            })}
+          </g>
 
-                  {/* Node Label */}
-                  {(labelLimit || isSelected || isNeighbor || d.is_case) && (
-                    <text
-                      y={r + 12}
-                      textAnchor="middle"
-                      fill={isSelected ? '#38e0ff' : d.is_case ? '#f43f5e' : '#cbd5e1'}
-                      fontSize="10"
-                      fontFamily="var(--font-sans), sans-serif"
-                      fontWeight={d.is_case || isSelected ? '600' : 'normal'}
-                      className="pointer-events-none drop-shadow"
-                    >
-                      {d.name?.length > 20 ? d.name.slice(0, 18) + '…' : d.name}
-                    </text>
-                  )}
+          {/* ── Node Labels Layer (Always rendered above all nodes & edges to prevent occlusion) ── */}
+          <g className="node-labels pointer-events-none">
+            {nodes.map((d) => {
+              if (!nodeVisible(d) || d.x == null) return null
+              const r = nodeRadius(d)
+              const isSelected = selectedId === d.id
+              const isNeighbor = neighborIds ? neighborIds.has(d.id) : true
+              if (!(labelLimit || isSelected || isNeighbor || d.is_case)) return null
+
+              const opacity = neighborIds ? (isNeighbor ? 1 : 0.15) : 1
+              const textColor = isSelected ? '#38e0ff' : d.is_case ? '#f43f5e' : '#e2e8f0'
+              const labelText = d.name?.length > 22 ? d.name.slice(0, 20) + '…' : d.name
+
+              return (
+                <g
+                  key={`lbl-${d.id}`}
+                  transform={`translate(${d.x}, ${d.y + r + 13})`}
+                  opacity={opacity}
+                >
+                  {/* Background halo stroke preventing visual clash */}
+                  <text
+                    textAnchor="middle"
+                    stroke="#04070a"
+                    strokeWidth="3.5"
+                    strokeLinejoin="round"
+                    fontSize="10"
+                    fontFamily="var(--font-sans), sans-serif"
+                    fontWeight={d.is_case || isSelected ? '600' : '500'}
+                  >
+                    {labelText}
+                  </text>
+                  {/* Foreground text */}
+                  <text
+                    textAnchor="middle"
+                    fill={textColor}
+                    fontSize="10"
+                    fontFamily="var(--font-sans), sans-serif"
+                    fontWeight={d.is_case || isSelected ? '600' : '500'}
+                  >
+                    {labelText}
+                  </text>
                 </g>
               )
             })}
