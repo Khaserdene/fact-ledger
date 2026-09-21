@@ -344,10 +344,15 @@ def remove_case_link(slug: str, link_id: int, db: Session = Depends(get_db)):
 @router.get("/{slug}/entity-activity")
 def get_entity_activity(
     slug: str,
-    entity_id: int,
+    entity_id: Optional[int] = None,
+    entityId: Optional[int] = None,
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     """Тухайн хэргийн хүрээнд субъектийн timeline: facts + relationships."""
+    target_id = entity_id or entityId
+    if not target_id:
+        raise HTTPException(status_code=400, detail="entity_id or entityId query parameter is required")
+    entity_id = target_id
     case = db.query(models.Case).filter(models.Case.slug == slug).first()
     if not case:
         raise HTTPException(status_code=404, detail="Хэрэг олдсонгүй.")
