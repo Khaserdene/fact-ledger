@@ -163,11 +163,18 @@ def get_case_subgraph(slug: str, db: Session = Depends(get_db)) -> Dict[str, Any
     ]
     for e in entities:
         link = next((l for l in links if l.entity_id == e["id"]), None)
+        # Субъектийн хэрэг дэх хамгийн эхний огноо
+        first_date = None
+        for f in facts:
+            if f.get("entity_id") == e["id"] and f.get("fact_date"):
+                if not first_date or f["fact_date"] < first_date:
+                    first_date = f["fact_date"]
         graph_nodes.append({
             "id": e["id"],
             "name": e["name"],
             "entity_type": e["entity_type"],
             "role": link.role if link else "INVOLVED_IN",
+            "first_date": first_date,
             "x": link.x if link else None,
             "y": link.y if link else None,
         })
@@ -178,6 +185,7 @@ def get_case_subgraph(slug: str, db: Session = Depends(get_db)) -> Dict[str, Any
             "name": (f["fact_text"][:60] + "…") if len(f["fact_text"]) > 60 else f["fact_text"],
             "entity_type": "fact",
             "fact_id": f["id"],
+            "date": f.get("fact_date"),
             "role": link.role if link else "EVIDENCE_FOR",
         })
 
