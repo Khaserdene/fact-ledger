@@ -1,8 +1,9 @@
 import { NavLink, useLocation } from 'react-router-dom'
-import { Network, FileText, Users, PlusCircle } from 'lucide-react'
+import { Network, FileText, Users, PlusCircle, TrendingUp } from 'lucide-react'
 
 const NAV_ITEMS = [
-  { to: '/', label: 'График', Icon: Network, end: true },
+  { to: '/', label: 'Сүлжээ', Icon: Network, end: true },
+  { to: '/macro', label: 'Макро', Icon: TrendingUp },
   { to: '/entities', label: 'Субъектүүд', Icon: Users },
   { to: '/sources', label: 'Эх сурвалж', Icon: FileText },
   { to: '/capture', label: 'Нэмэх', Icon: PlusCircle },
@@ -78,7 +79,7 @@ function MobileTopBar() {
 
 export default function AppShell({ children }) {
   const { pathname } = useLocation()
-  const isFullBleed = pathname === '/' // graph хуудас бүтэн өргөн
+  const isFullBleed = pathname === '/' || pathname === '/macro' // graph болон macro хуудас өргөн харагдана
   return (
     <div className="min-h-screen flex flex-col md:flex-row">
       <SideNav />

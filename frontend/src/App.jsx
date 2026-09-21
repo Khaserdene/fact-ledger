@@ -7,6 +7,7 @@ import GraphHub from './pages/GraphHub'
 import SourceCapture from './pages/SourceCapture'
 import SourceList from './pages/SourceList'
 import SourceView from './pages/SourceView'
+import MacroAnalytics from './pages/MacroAnalytics'
 
 /** Хуучин замуудаас шинэ рүү чиглүүлэлт */
 function RedirectWithId({ to }) {
@@ -20,6 +21,7 @@ export default function App() {
       <AppShell>
         <Routes>
           <Route path="/" element={<GraphHub />} />
+          <Route path="/macro" element={<MacroAnalytics />} />
           <Route path="/sources" element={<SourceList />} />
           <Route path="/capture" element={<SourceCapture />} />
           <Route path="/sources/:id" element={<SourceView />} />

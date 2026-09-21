@@ -505,7 +505,19 @@ export default function EntityDetail() {
               {bioFacts.map((f) => (
                 <div key={f.id} className="flex items-start gap-3 text-sm">
                   <SentimentDot score={f.sentiment_score} />
-                  <span className="text-text/90 flex-1 leading-relaxed">{f.fact_text}</span>
+                  <div className="flex-1 leading-relaxed">
+                    <span className="text-text/90">{f.fact_text}</span>
+                    {f.source_id && (
+                      <Link
+                        to={`/sources/${f.source_id}`}
+                        className="inline-flex items-center gap-1 text-[11px] font-medium text-accent/90 hover:text-accent bg-accent/10 hover:bg-accent/20 border border-accent/20 px-2 py-0.5 rounded ml-2 transition-colors"
+                        title={f.source_title || 'Эх сурвалж'}
+                      >
+                        <span>⎘</span>
+                        <span className="truncate max-w-[150px]">{f.source_title || 'Эх сурвалж'}</span>
+                      </Link>
+                    )}
+                  </div>
                   {f.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1 shrink-0">
                       {f.tags.map((t) => (
@@ -543,6 +555,11 @@ export default function EntityDetail() {
                     <p className="text-text/90">{f.fact_text}</p>
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                       {f.fact_date && <span className="text-xs text-faint font-mono">{f.fact_date.slice(0, 10)}</span>}
+                      {f.source_id && (
+                        <Link to={`/sources/${f.source_id}`} className="text-xs text-accent/80 hover:underline inline-flex items-center gap-1">
+                          ⎘ {f.source_title || 'Эх сурвалж'}
+                        </Link>
+                      )}
                       {f.tags.map((t) => (
                         <Badge key={t} tone="danger">{t}</Badge>
                       ))}
@@ -565,10 +582,15 @@ export default function EntityDetail() {
                     <p className="text-text/90">{f.fact_text}</p>
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                       {f.fact_date && <span className="text-xs text-faint font-mono">{f.fact_date.slice(0, 10)}</span>}
+                      {f.source_id && (
+                        <Link to={`/sources/${f.source_id}`} className="text-xs text-accent/80 hover:underline inline-flex items-center gap-1">
+                          ⎘ {f.source_title || 'Эх сурвалж'}
+                        </Link>
+                      )}
                       {f.tags.map((t) => (
                         <Badge key={t} tone="ok">{t}</Badge>
                       ))}
-                      <span className="text-xs text-ok/70 ml-auto">оноо: {f.sentiment_score?.toFixed(2)}</span>
+                      <span className="text-xs text-ok/70 ml-auto">оноо: +{f.sentiment_score?.toFixed(2)}</span>
                     </div>
                   </div>
                 ))}

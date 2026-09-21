@@ -42,6 +42,23 @@ def scrape_url(payload: schemas.ScrapeRequest):
     return schemas.ScrapeResponse(**result)
 
 
+def infer_source_category(url: Optional[str], source_type: str, title: str) -> str:
+    u = (url or '').lower()
+    t = (title or '').lower()
+    if any(k in u for k in ['legalinfo.mn', 'parliament.mn', 'mof.gov.mn', 'zasag.mn', 'gov.mn']):
+        return 'government'
+    elif any(k in u for k in ['1212.mn', 'nso.mn']) or 'статистик' in t or 'архив' in t:
+        return 'statistics'
+    elif any(k in u for k in ['wikipedia.org', 'mongoltoli.mn']):
+        return 'encyclopedia'
+    elif source_type == 'document':
+        return 'document'
+    elif source_type == 'note':
+        return 'note'
+    else:
+        return 'media'
+
+
 def create_source_from_payload(db: Session, payload: schemas.SourceCreate) -> models.Source:
     if payload.source_type not in SOURCE_TYPES:
         raise HTTPException(status_code=400, detail=f"Буруу source_type: {payload.source_type}")
@@ -57,8 +74,11 @@ def create_source_from_payload(db: Session, payload: schemas.SourceCreate) -> mo
         selected_text = payload.body.strip()
         cleaned_text = selected_text
 
+    cat = payload.category or infer_source_category(payload.url, payload.source_type, payload.title)
+
     source = models.Source(
         source_type=payload.source_type,
+        category=cat,
         url=payload.url,
         title=payload.title,
         author=payload.author,
@@ -83,6 +103,8 @@ def create_source(payload: schemas.SourceCreate, db: Session = Depends(get_db)):
 def list_sources(
     url: Optional[str] = None,
     source_type: Optional[str] = None,
+    category: Optional[str] = None,
+    search: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     q = db.query(models.Source)
@@ -90,6 +112,15 @@ def list_sources(
         q = q.filter(models.Source.url == url)
     if source_type:
         q = q.filter(models.Source.source_type == source_type)
+    if category and category != "all":
+        q = q.filter(models.Source.category == category)
+    if search:
+        s = f"%{search.strip()}%"
+        q = q.filter(
+            (models.Source.title.ilike(s)) |
+            (models.Source.url.ilike(s)) |
+            (models.Source.author.ilike(s))
+        )
     return q.order_by(models.Source.created_at.desc()).all()
 
 

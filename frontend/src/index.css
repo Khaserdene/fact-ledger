@@ -202,13 +202,24 @@ body {
   fill: var(--color-dim);
   pointer-events: none;
   user-select: none;
+  paint-order: stroke fill;
+  stroke: var(--color-ink-950);
+  stroke-width: 3.5px;
+  stroke-linejoin: round;
 }
 .graph-node-label.active {
-  fill: var(--color-text);
+  fill: var(--color-accent-bright);
+  stroke: var(--color-ink-950);
+  stroke-width: 4.5px;
+}
+.graph-node-label.neighbor {
+  fill: #ffffff;
+  stroke: var(--color-ink-950);
+  stroke-width: 4px;
 }
 .graph-edge {
   stroke: rgb(56 224 255 / 0.22);
-  transition: stroke 0.15s ease;
+  transition: stroke 0.15s ease, opacity 0.2s ease;
 }
 .graph-edge.ghost {
   stroke-dasharray: 4 4;
@@ -216,10 +227,14 @@ body {
 }
 .graph-node {
   cursor: pointer;
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .graph-node.dimmed {
-  opacity: 0.06;
-  transition: opacity 0.2s ease;
+  opacity: 0.07;
+}
+.graph-node.neighbor,
+.graph-node.focus {
+  opacity: 1;
 }
 
 /* Скроллбар — минимал */

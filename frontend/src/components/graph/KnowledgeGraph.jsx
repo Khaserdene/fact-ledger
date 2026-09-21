@@ -93,6 +93,40 @@ export default function KnowledgeGraph({ data, filteredNodeIds, yearRange, selec
     }
   }, [])
 
+  const svgDownPos = useRef(null)
+
+  // Escape товчоор сонголтыг цуцлах
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (e.key === 'Escape' && onSelect) {
+        onSelect(null)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onSelect])
+
+  function handleSvgPointerDown(e) {
+    if (!e.target.closest('.graph-node')) {
+      svgDownPos.current = { x: e.clientX, y: e.clientY }
+    } else {
+      svgDownPos.current = null
+    }
+  }
+
+  function handleSvgPointerUp(e) {
+    if (!svgDownPos.current) return
+    const dx = Math.abs(e.clientX - svgDownPos.current.x)
+    const dy = Math.abs(e.clientY - svgDownPos.current.y)
+    svgDownPos.current = null
+    // 6px-ээс бага хөдөлсөн (pan хийгээгүй) бөгөөд хоосон талбар дээр дарсан үед deselect хийнэ
+    if (dx < 6 && dy < 6 && !e.target.closest('.graph-node')) {
+      if (onSelect) {
+        onSelect(null)
+      }
+    }
+  }
+
   function nodeRadius(d) {
     if (d.ghost) return 5
     return 7 + Math.sqrt(d.fact_count || 0) * 2.2
@@ -123,7 +157,14 @@ export default function KnowledgeGraph({ data, filteredNodeIds, yearRange, selec
     window.removeEventListener('pointerup', onDragEnd)
     if (st && !st.moved && onSelect) {
       const d = simNodes.current.find((n) => n.id === st.id)
-      if (d) onSelect(d)
+      if (d) {
+        // Хэрэв аль хэдийн сонгогдсон node дээрээ дахин дарвал deselect хийнэ (toggle)
+        if (selectedId === d.id) {
+          onSelect(null)
+        } else {
+          onSelect(d)
+        }
+      }
     }
   }
   function svgPoint(event) {
@@ -143,20 +184,8 @@ export default function KnowledgeGraph({ data, filteredNodeIds, yearRange, selec
     return { x: px, y: py }
   }
 
-  const neighborIds = useMemo(() => {
-    if (!hoverId && !selectedId) return null
-    const focus = hoverId || selectedId
-    const s = new Set([focus])
-    for (const e of simEdges.current) {
-      if (e.source === focus) s.add(typeof e.target === 'object' ? e.target.id : e.target)
-      if ((typeof e.target === 'object' ? e.target.id : e.target) === focus) s.add(e.source)
-    }
-    return s
-  }, [hoverId, selectedId])
-
-  const nodes = simNodes.current
-  const links = simEdges.current
-  const labelLimit = nodes.length <= 60 || hoverId || selectedId
+  const getEdgeSourceId = (e) => (typeof e.source === 'object' && e.source !== null ? e.source.id : e.source)
+  const getEdgeTargetId = (e) => (typeof e.target === 'object' && e.target !== null ? e.target.id : e.target)
 
   const yearOf = (iso) => (iso ? parseInt(iso.slice(0, 4), 10) : null)
   function overlapsRange(fromIso, toIso) {
@@ -176,6 +205,25 @@ export default function KnowledgeGraph({ data, filteredNodeIds, yearRange, selec
     if (!nodeVisible(s) || !nodeVisible(t)) return false
     return overlapsRange(e.start_date, e.end_date)
   }
+
+  // Hover эсвэл Select хийсэн үед тухайн субъект ба түүний шууд холбоотой хөршүүдийн ID-уудыг ялгана
+  const neighborIds = useMemo(() => {
+    if (!hoverId && !selectedId) return null
+    const focus = hoverId || selectedId
+    const s = new Set([focus])
+    for (const e of simEdges.current) {
+      if (!edgeVisible(e)) continue
+      const sId = getEdgeSourceId(e)
+      const tId = getEdgeTargetId(e)
+      if (sId === focus) s.add(tId)
+      if (tId === focus) s.add(sId)
+    }
+    return s
+  }, [hoverId, selectedId, filteredNodeIds, yearRange])
+
+  const nodes = simNodes.current
+  const links = simEdges.current
+  const labelLimit = nodes.length <= 60
 
   // Hover хийсэн node болон түүний шууд холбоостой хөршүүдийн мэдээллийг бэлтгэнэ
   const hoverInfo = useMemo(() => {
@@ -273,7 +321,14 @@ export default function KnowledgeGraph({ data, filteredNodeIds, yearRange, selec
         </div>
       )}
 
-      <svg ref={svgRef} width="100%" height="100%" className="touch-none select-none">
+      <svg
+        ref={svgRef}
+        width="100%"
+        height="100%"
+        className="touch-none select-none"
+        onPointerDown={handleSvgPointerDown}
+        onPointerUp={handleSvgPointerUp}
+      >
         <defs>
           <radialGradient id="nodeGlow">
             <stop offset="0%" stopColor="rgb(56 224 255 / 0.35)" />
@@ -355,46 +410,102 @@ export default function KnowledgeGraph({ data, filteredNodeIds, yearRange, selec
           {nodes.filter(nodeVisible).map((d) => {
             const t = entityType(d.entity_type)
             const r = nodeRadius(d)
-            const dimmed = neighborIds && !neighborIds.has(d.id)
-            const isSel = selectedId === d.id
             const isHover = hoverId === d.id
+            const isSel = selectedId === d.id
+            const isFocus = isHover || isSel
+            const isNeighbor = Boolean(neighborIds && neighborIds.has(d.id) && !isFocus)
+            const dimmed = Boolean(neighborIds && !neighborIds.has(d.id))
+
+            // Шошго (Label) харагдах нөхцөл:
+            // 1. Хулгана хүргэсэн / сонгосон гол субъект (isFocus)
+            // 2. Түүнтэй шууд холбогдсон хөрш субъектууд (isNeighbor)
+            // 3. Эсвэл ямар ч субъект дээр hover хийгээгүй үед ерөнхий цөөн зангилаатай үеийн шошго
+            const showLabel = isFocus || isNeighbor || (!hoverId && !selectedId && labelLimit)
+
+            const displayRadius = isFocus ? r * 1.2 : (isNeighbor ? r * 1.08 : r)
+
             return (
               <g
                 key={d.id}
                 transform={`translate(${d.x},${d.y})`}
-                className={`graph-node ${dimmed ? 'dimmed' : ''}`}
+                className={`graph-node ${dimmed ? 'dimmed' : ''} ${isFocus ? 'focus' : ''} ${isNeighbor ? 'neighbor' : ''}`}
                 style={{ cursor: dragRef.current?.id === d.id ? 'grabbing' : 'grab' }}
                 onPointerDown={(ev) => startDrag(ev, d)}
                 onPointerEnter={() => setHoverId(d.id)}
                 onPointerLeave={() => setHoverId((h) => (h === d.id ? null : h))}
+                onClick={(e) => e.stopPropagation()}
               >
-                {(isSel || isHover) && <circle r={r + 12} fill="url(#nodeGlow)" />}
-                {/* hover үед холбогдсон node-уудыг гэрэлтүүлэх цагираг */}
-                {neighborIds && neighborIds.has(d.id) && (hoverId || selectedId) && !isSel && (
-                    <circle r={r + 5} fill="none" stroke="var(--color-accent)" strokeWidth={1} opacity={0.7} />
+                {/* 1. Гол зангилааны хүчтэй гэрэлтэлт */}
+                {isFocus && (
+                  <>
+                    <circle r={r + 16} fill="url(#nodeGlow)" />
+                    <circle
+                      r={r + 7}
+                      fill="none"
+                      stroke="var(--color-accent-bright)"
+                      strokeWidth={2}
+                      opacity={0.85}
+                    />
+                  </>
                 )}
-                {/* томруулсан товч талбар — жижиг node-ийг ч мөр дарж чирахад хялбар */}
-                <circle r={Math.max(r + 8, 14)} fill="transparent" />
+
+                {/* 2. Холбогдсон хөрш зангилаануудыг тодруулах гэрэлт цагираг ба арын туяа */}
+                {isNeighbor && (
+                  <>
+                    <circle r={r + 8} fill={t.color} fillOpacity={0.22} />
+                    <circle
+                      r={r + 5}
+                      fill="none"
+                      stroke={t.color}
+                      strokeWidth={2}
+                      strokeDasharray="4 2"
+                      opacity={0.95}
+                    />
+                  </>
+                )}
+
+                {/* Хулганаар дарахад хялбар болгох үл үзэгдэх талбар */}
+                <circle r={Math.max(r + 8, 16)} fill="transparent" />
+
+                {/* Үндсэн зангилааны тойрог */}
                 <circle
-                  r={r}
+                  r={displayRadius}
                   fill={d.ghost ? 'var(--color-ink-900)' : t.color}
-                  fillOpacity={d.ghost ? 0.4 : 0.18}
-                  stroke={isSel ? 'var(--color-accent-bright)' : t.color}
-                  strokeWidth={isSel ? 2.5 : 1.5}
+                  fillOpacity={isFocus ? 0.65 : (isNeighbor ? 0.45 : (d.ghost ? 0.4 : 0.2))}
+                  stroke={isFocus ? 'var(--color-accent-bright)' : (isNeighbor ? t.color : (d.ghost ? 'var(--color-ink-600)' : t.color))}
+                  strokeWidth={isFocus ? 3.2 : (isNeighbor ? 2.4 : 1.4)}
                   strokeDasharray={d.ghost ? '3 3' : undefined}
                 />
+
+                {/* Баримтын зөрчилтэй бол анхааруулах цэг */}
                 {d.has_contradiction && (
-                  <circle r={3} cx={r * 0.7} cy={-r * 0.7} fill="var(--color-warn)" stroke="var(--color-ink-950)" strokeWidth="1" />
+                  <circle
+                    r={3.5}
+                    cx={r * 0.7}
+                    cy={-r * 0.7}
+                    fill="var(--color-warn)"
+                    stroke="var(--color-ink-950)"
+                    strokeWidth="1.2"
+                  />
                 )}
-                {(labelLimit || isHover || isSel) && (
-                  <text
-                    className={`graph-node-label ${isSel || isHover ? 'active' : ''}`}
-                    y={r + 13}
-                    textAnchor="middle"
-                    style={d.ghost ? { fontStyle: 'italic' } : undefined}
-                  >
-                    {d.name.length > 22 ? d.name.slice(0, 20) + '…' : d.name}
-                  </text>
+
+                {/* Зангилааны НЭР (Label) — Hover хийхэд холбогдсон хөршүүдийн нэр тодорч харагдана */}
+                {showLabel && (
+                  <g transform={`translate(0, ${displayRadius + 13})`}>
+                    <text
+                      className={`graph-node-label ${isFocus ? 'active' : ''} ${isNeighbor ? 'neighbor' : ''}`}
+                      textAnchor="middle"
+                      style={{
+                        fontStyle: d.ghost ? 'italic' : undefined,
+                        fill: isFocus ? 'var(--color-accent-bright)' : (isNeighbor ? '#ffffff' : undefined),
+                        fontWeight: isFocus ? 800 : (isNeighbor ? 700 : 500),
+                        fontSize: isFocus ? '12px' : (isNeighbor ? '11px' : '9.5px'),
+                        letterSpacing: isFocus ? '0.02em' : undefined,
+                      }}
+                    >
+                      {d.name.length > 24 ? d.name.slice(0, 22) + '…' : d.name}
+                    </text>
+                  </g>
                 )}
               </g>
             )

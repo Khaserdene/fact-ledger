@@ -35,12 +35,19 @@ class Source(Base):
     raw_hash = Column(Text, nullable=True)
     sha256_hash = Column(Text, nullable=False)
     # Хэвлэлийн хандлага: эерэг = дэмжсэн, сөрөг = шүүмжилсэн, 0 = төвийг сахисан
+    # Хэвлэлийн хандлага: эерэг = дэмжсэн, сөрөг = шүүмжилсэн, 0 = төвийг сахисан
     bias_score = Column(Float, nullable=True)
     # Найдвартай байдал 0.0–1.0
     reliability_score = Column(Float, nullable=True)
     created_at = Column(DateTime, default=func.now())
+    # Ангилал: "media" (хэвлэл) | "government" (төрийн/хууль) | "statistics" (ҮСХ/статистик) | "encyclopedia" (нэвтэрхий толь) | "document" (баримт бичиг) | "note" (тэмдэглэл)
+    category = Column(Text, nullable=False, default="media")
 
     facts = relationship("Fact", back_populates="source")
+
+    @property
+    def facts_count(self) -> int:
+        return len(self.facts)
 
 
 class Entity(Base):
@@ -139,6 +146,18 @@ class Fact(Base):
     @property
     def has_contradiction(self):
         return bool(self.contradictions)
+
+    @property
+    def source_title(self):
+        return self.source.title if self.source else None
+
+    @property
+    def source_url(self):
+        return self.source.url if self.source else None
+
+    @property
+    def source_category(self):
+        return self.source.category if self.source else None
 
 
 class Relationship(Base):
@@ -266,3 +285,44 @@ class Mention(Base):
     entity = relationship("Entity")
 
     __table_args__ = (UniqueConstraint("source_id", "entity_id", "name_as_written"),)
+
+
+class MacroIndicator(Base):
+    """Макро эдийн засаг, санхүү, хүн ам зүй зэрэг хугацааны цуваа (time-series) тоон үзүүлэлтийн тодорхойлолт."""
+    __tablename__ = "macro_indicators"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(Text, unique=True, nullable=False, index=True)  # "budget_expenditure", "usd_rate", "cny_rate", "population"
+    name = Column(Text, nullable=False)
+    category = Column(Text, nullable=False, default="macro")  # "fiscal" | "fx" | "demography" | "macro"
+    unit = Column(Text, nullable=False)  # "их наяд ₮", "₮", "сая хүн"
+    default_axis = Column(Text, nullable=False, default="left")  # "left" | "right"
+    color = Column(Text, nullable=False, default="#3B82F6")
+    description = Column(Text, nullable=True)
+    entity_id = Column(Integer, ForeignKey("entities.id"), nullable=True)
+    source_id = Column(Integer, ForeignKey("sources.id"), nullable=True)
+    created_at = Column(DateTime, default=func.now())
+
+    datapoints = relationship("MacroDataPoint", back_populates="indicator", cascade="all, delete-orphan", order_by="MacroDataPoint.year")
+    entity = relationship("Entity")
+    source = relationship("Source")
+
+
+class MacroDataPoint(Base):
+    """Макро үзүүлэлтийн он, огноо тус бүрийн бодит тоон утга ба эх сурвалж."""
+    __tablename__ = "macro_datapoints"
+
+    id = Column(Integer, primary_key=True, index=True)
+    indicator_id = Column(Integer, ForeignKey("macro_indicators.id", ondelete="CASCADE"), nullable=False, index=True)
+    year = Column(Integer, nullable=False, index=True)
+    date = Column(Date, nullable=True)
+    value = Column(Float, nullable=False)
+    note = Column(Text, nullable=True)
+    source_id = Column(Integer, ForeignKey("sources.id"), nullable=True, index=True)
+    created_at = Column(DateTime, default=func.now())
+
+    indicator = relationship("MacroIndicator", back_populates="datapoints")
+    source = relationship("Source")
+
+    __table_args__ = (UniqueConstraint("indicator_id", "year", name="uq_macro_indicator_year"),)
+

@@ -311,7 +311,10 @@ function NodePanel({ node, onClose }) {
   const chronoFacts = useMemo(() => facts?.filter(f => f.fact_type === 'chronological') || [], [facts])
 
   return (
-    <div className="absolute z-20 inset-x-0 bottom-0 lg:inset-auto lg:top-4 lg:right-4 lg:bottom-4 lg:w-[420px]">
+    <div
+      className="absolute z-20 inset-x-0 bottom-0 lg:inset-auto lg:top-4 lg:right-4 lg:bottom-4 lg:w-[420px]"
+      onClick={(e) => e.stopPropagation()}
+    >
       <GlassCard className="glass-strong p-5 h-full max-h-[80vh] lg:max-h-none overflow-y-auto relative border-accent/30 shadow-2xl">
         <button
           onClick={onClose}

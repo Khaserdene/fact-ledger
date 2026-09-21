@@ -29,6 +29,7 @@ class SourceCreate(BaseModel):
     """source_type='article': url + selected_blocks шаардлагатай.
     source_type='note'|'document': body шаардлагатай, url сонголттой."""
     source_type: str = "article"
+    category: Optional[str] = None
     title: str
     url: Optional[str] = None
     author: Optional[str] = None
@@ -43,6 +44,7 @@ class SourceOut(BaseModel):
 
     id: int
     source_type: str
+    category: Optional[str] = "media"
     url: Optional[str]
     title: str
     author: Optional[str]
@@ -52,6 +54,7 @@ class SourceOut(BaseModel):
     sha256_hash: str
     bias_score: Optional[float]
     reliability_score: Optional[float]
+    facts_count: Optional[int] = 0
     created_at: datetime
 
 
@@ -134,6 +137,9 @@ class FactOut(BaseModel):
     fact_id: Optional[str]
     entity_id: int
     source_id: Optional[int]
+    source_title: Optional[str] = None
+    source_url: Optional[str] = None
+    source_category: Optional[str] = None
     fact_type: str
     fact_date: Optional[date]
     date_precision: Optional[str]
@@ -147,7 +153,7 @@ class FactOut(BaseModel):
     has_contradiction: bool
     contradictions: List["ContradictionOut"] = []
     sentiment_score: Optional[float] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
 
 class FactCreate(BaseModel):
@@ -299,3 +305,37 @@ class ImportFactsResult(BaseModel):
 
 SourceWithFacts.model_rebuild()
 FactOut.model_rebuild()
+
+
+# ── Macro Indicators & Time-Series ──────────────────────────────────────────
+
+class MacroDataPointOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    indicator_id: int
+    year: int
+    date: Optional[date] = None
+    value: float
+    note: Optional[str] = None
+    source_id: Optional[int] = None
+
+
+class MacroIndicatorOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    code: str
+    name: str
+    category: str
+    unit: str
+    default_axis: str
+    color: str
+    description: Optional[str] = None
+    entity_id: Optional[int] = None
+    source_id: Optional[int] = None
+    created_at: datetime
+    datapoints_count: Optional[int] = 0
+    min_year: Optional[int] = None
+    max_year: Optional[int] = None
+
