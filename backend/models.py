@@ -326,3 +326,60 @@ class MacroDataPoint(Base):
 
     __table_args__ = (UniqueConstraint("indicator_id", "year", name="uq_macro_indicator_year"),)
 
+
+class Case(Base):
+    """Мөрдлөгийн хэрэг / шинжилгээний дэд-граф (Investigation sub-graph root node)."""
+    __tablename__ = "cases"
+
+    STATUSES = ("DRAFT", "PUBLISHED")
+
+    id = Column(Integer, primary_key=True, index=True)
+    slug = Column(Text, unique=True, nullable=False, index=True)
+    title = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(Text, nullable=False, default="DRAFT")
+    cover_entity_id = Column(Integer, ForeignKey("entities.id"), nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    cover_entity = relationship("Entity")
+    links = relationship("CaseLink", back_populates="case", cascade="all, delete-orphan")
+
+    @property
+    def links_count(self) -> int:
+        return len(self.links)
+
+    @property
+    def entities_count(self) -> int:
+        return len([l for l in self.links if l.entity_id is not None])
+
+
+class CaseLink(Base):
+    """Хэрэг ↔ Субъект/Факт холбоос (investigation junction)."""
+    __tablename__ = "case_links"
+
+    ROLES = (
+        "INVOLVED_IN", "EVIDENCE_FOR", "WITNESS", "BENEFICIARY",
+        "SUSPECT", "VICTIM", "DECISION_MAKER", "PART_OF_CASE", "RELATED_TO",
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    case_id = Column(Integer, ForeignKey("cases.id", ondelete="CASCADE"), nullable=False, index=True)
+    entity_id = Column(Integer, ForeignKey("entities.id"), nullable=True, index=True)
+    fact_id = Column(Integer, ForeignKey("facts.id"), nullable=True, index=True)
+    role = Column(Text, nullable=False, default="INVOLVED_IN")
+    note = Column(Text, nullable=True)
+    # Canvas дээрх координат (layout хадгалах)
+    x = Column(Float, nullable=True)
+    y = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=func.now())
+
+    case = relationship("Case", back_populates="links")
+    entity = relationship("Entity")
+    fact = relationship("Fact")
+
+    __table_args__ = (
+        UniqueConstraint("case_id", "entity_id", name="uq_case_entity"),
+        UniqueConstraint("case_id", "fact_id", name="uq_case_fact"),
+    )
+

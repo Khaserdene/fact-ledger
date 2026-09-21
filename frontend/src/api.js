@@ -76,4 +76,15 @@ export const api = {
   // Зөрчлүүд
   listContradictions: (params) => req('GET', `/contradictions${qs(params)}`),
   updateContradiction: (id, data) => req('PATCH', `/contradictions/${id}`, data),
+
+  // Хэргүүд (Cases / Investigations)
+  listCases: (params) => req('GET', `/cases${qs(params)}`),
+  createCase: (data) => req('POST', '/cases', data),
+  getCase: (slug) => req('GET', `/cases/${slug}`),
+  updateCase: (slug, data) => req('PATCH', `/cases/${slug}`, data),
+  deleteCase: (slug) => req('DELETE', `/cases/${slug}`),
+  addCaseLink: (slug, data) => req('POST', `/cases/${slug}/links`, data),
+  updateCaseLink: (slug, linkId, data) => req('PATCH', `/cases/${slug}/links/${linkId}`, data),
+  removeCaseLink: (slug, linkId) => req('DELETE', `/cases/${slug}/links/${linkId}`),
+  getCaseEntityActivity: (slug, entityId) => req('GET', `/cases/${slug}/entity-activity?entityId=${entityId}`),
 }

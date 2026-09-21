@@ -5,7 +5,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import analytics, contradictions, entities, facts, relationships, sources, system
+from routers import analytics, cases, contradictions, entities, facts, relationships, sources, system
 
 app = FastAPI(title="Profiling Facts API", version="2.0.0")
 
@@ -24,4 +24,5 @@ app.include_router(facts.router)
 app.include_router(relationships.router)
 app.include_router(contradictions.router)
 app.include_router(analytics.router)
+app.include_router(cases.router)
 

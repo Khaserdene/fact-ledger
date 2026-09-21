@@ -339,3 +339,64 @@ class MacroIndicatorOut(BaseModel):
     min_year: Optional[int] = None
     max_year: Optional[int] = None
 
+
+# ── Cases (Investigation / Хэрэг) ─────────────────────────────────────────
+
+class CaseCreate(BaseModel):
+    title: str
+    slug: str
+    description: Optional[str] = None
+    status: str = "DRAFT"
+    cover_entity_id: Optional[int] = None
+
+
+class CaseUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+    cover_entity_id: Optional[int] = None
+
+
+class CaseOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    slug: str
+    title: str
+    description: Optional[str] = None
+    status: str
+    cover_entity_id: Optional[int] = None
+    links_count: int = 0
+    entities_count: int = 0
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class CaseLinkCreate(BaseModel):
+    entity_id: Optional[int] = None
+    fact_id: Optional[int] = None
+    role: str = "INVOLVED_IN"
+    note: Optional[str] = None
+    x: Optional[float] = None
+    y: Optional[float] = None
+
+
+class CaseLinkUpdate(BaseModel):
+    role: Optional[str] = None
+    note: Optional[str] = None
+    x: Optional[float] = None
+    y: Optional[float] = None
+
+
+class CaseLinkOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    case_id: int
+    entity_id: Optional[int] = None
+    fact_id: Optional[int] = None
+    role: str
+    note: Optional[str] = None
+    x: Optional[float] = None
+    y: Optional[float] = None
+    created_at: datetime
