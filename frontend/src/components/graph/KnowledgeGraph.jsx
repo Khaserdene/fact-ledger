@@ -432,7 +432,7 @@ export default function KnowledgeGraph({
                 return (
                   <g key={yr} transform={`translate(${x}, 0)`}>
                     <line y1={40} y2={size.h - 40} stroke="#38e0ff" strokeDasharray="3 4" strokeWidth={0.8} />
-                    <text y={size.h - 20} fill="#38e0ff" fontSize="10" fontFamily="monospace" textAnchor="middle">
+                    <text y={size.h - 20} fill="#38e0ff" fontSize="10" fontFamily="var(--font-sans), sans-serif" textAnchor="middle">
                       {yr}
                     </text>
                   </g>
@@ -477,7 +477,8 @@ export default function KnowledgeGraph({
                       y={(s.y + t.y) / 2 - 4}
                       fill="#38e0ff"
                       fontSize="9"
-                      fontFamily="monospace"
+                      fontFamily="var(--font-sans), sans-serif"
+                      fontWeight="500"
                       textAnchor="middle"
                       className="pointer-events-none drop-shadow"
                     >
@@ -551,7 +552,7 @@ export default function KnowledgeGraph({
                     fill={color}
                     fontSize={d.is_case ? '13' : r > 12 ? '10' : '8'}
                     fontWeight="bold"
-                    fontFamily="monospace"
+                    fontFamily="var(--font-sans), sans-serif"
                     className="pointer-events-none"
                   >
                     {d.is_case ? '★' : d.name?.charAt(0) || '•'}
@@ -564,8 +565,8 @@ export default function KnowledgeGraph({
                       textAnchor="middle"
                       fill={isSelected ? '#38e0ff' : d.is_case ? '#f43f5e' : '#cbd5e1'}
                       fontSize="10"
-                      fontFamily="monospace"
-                      fontWeight={d.is_case || isSelected ? 'bold' : 'normal'}
+                      fontFamily="var(--font-sans), sans-serif"
+                      fontWeight={d.is_case || isSelected ? '600' : 'normal'}
                       className="pointer-events-none drop-shadow"
                     >
                       {d.name?.length > 20 ? d.name.slice(0, 18) + '…' : d.name}

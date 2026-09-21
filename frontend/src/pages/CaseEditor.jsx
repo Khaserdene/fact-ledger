@@ -28,7 +28,9 @@ import {
   RotateCcw,
   Clock,
   Filter,
-  Check
+  Check,
+  ArrowRight,
+  Sparkles
 } from 'lucide-react'
 import {
   forceCenter,
@@ -225,9 +227,9 @@ export default function CaseEditor() {
       idx: i
     }))
 
-    const idSet = new Set(nodes.map((n) => n.id))
+    const idSet = new Set(nodes.map((n) => String(n.id)))
     const links = (data.graph.edges || [])
-      .filter((e) => idSet.has(e.source) && idSet.has(e.target))
+      .filter((e) => idSet.has(String(e.source)) && idSet.has(String(e.target)))
       .map((e) => ({ ...e }))
 
     simNodes.current = nodes
@@ -238,7 +240,12 @@ export default function CaseEditor() {
         'link',
         forceLink(links)
           .id((d) => d.id)
-          .distance((d) => (d.source.is_center || d.target.is_center ? 140 : 85))
+          .distance((d) => {
+            if (d.source.is_center || d.target.is_center) return 150
+            if (d.is_fact_edge || d.source.entity_type === 'fact' || d.target.entity_type === 'fact') return 65
+            if (d.is_master_rel) return 90
+            return 95
+          })
           .strength(0.6)
       )
       .force('charge', forceManyBody().strength(-280))
@@ -380,12 +387,13 @@ export default function CaseEditor() {
   // Сонгогдсон node-той холбоотой edge, node-уудыг тодорхойлох (Highlighting & Dimming)
   const connectedNodeIds = useMemo(() => {
     if (!selectedNode || !simEdges.current) return null
-    const set = new Set([selectedNode.id])
+    const set = new Set([String(selectedNode.id)])
     for (const e of simEdges.current) {
-      const sId = typeof e.source === 'object' ? e.source.id : e.source
-      const tId = typeof e.target === 'object' ? e.target.id : e.target
-      if (sId === selectedNode.id) set.add(tId)
-      if (tId === selectedNode.id) set.add(sId)
+      const sId = String(typeof e.source === 'object' ? e.source.id : e.source)
+      const tId = String(typeof e.target === 'object' ? e.target.id : e.target)
+      const selId = String(selectedNode.id)
+      if (sId === selId) set.add(tId)
+      if (tId === selId) set.add(sId)
     }
     return set
   }, [selectedNode])
@@ -562,8 +570,8 @@ export default function CaseEditor() {
               {/* Edges */}
               <g className="edges">
                 {simEdges.current.map((e, idx) => {
-                  const s = typeof e.source === 'object' ? e.source : simNodes.current.find((n) => n.id === e.source)
-                  const t = typeof e.target === 'object' ? e.target : simNodes.current.find((n) => n.id === e.target)
+                  const s = typeof e.source === 'object' ? e.source : simNodes.current.find((n) => String(n.id) === String(e.source))
+                  const t = typeof e.target === 'object' ? e.target : simNodes.current.find((n) => String(n.id) === String(e.target))
                   if (!s || !t) return null
 
                   const sVisible = isNodeVisibleInTime(s)
@@ -571,8 +579,22 @@ export default function CaseEditor() {
                   if (!sVisible || !tVisible) return null
 
                   const isConnected =
-                    !connectedNodeIds || (connectedNodeIds.has(s.id) && connectedNodeIds.has(t.id))
-                  const opacity = isConnected ? 0.75 : 0.08
+                    !connectedNodeIds || (connectedNodeIds.has(String(s.id)) && connectedNodeIds.has(String(t.id)))
+                  const opacity = isConnected ? 0.85 : 0.06
+
+                  const isCenterLink = s.is_center || t.is_center
+                  const isMasterRel = e.is_master_rel || (!isCenterLink && !e.is_fact_edge && s.entity_type !== 'fact' && t.entity_type !== 'fact')
+                  const isFactRel = e.is_fact_edge || s.entity_type === 'fact' || t.entity_type === 'fact'
+
+                  const strokeColor = isCenterLink
+                    ? '#38e0ff'
+                    : isMasterRel
+                    ? '#f59e0b'
+                    : '#64748b'
+
+                  const strokeWidth = isConnected
+                    ? (isMasterRel ? 2 : isCenterLink ? 1.5 : 1.2)
+                    : 1
 
                   return (
                     <g key={idx}>
@@ -581,21 +603,22 @@ export default function CaseEditor() {
                         y1={s.y}
                         x2={t.x}
                         y2={t.y}
-                        stroke={s.is_center || t.is_center ? '#38e0ff' : '#94a3b8'}
-                        strokeWidth={s.is_center || t.is_center ? 1.5 : 1}
-                        strokeDasharray={s.is_center || t.is_center ? '4 2' : 'none'}
+                        stroke={strokeColor}
+                        strokeWidth={strokeWidth}
+                        strokeDasharray={isCenterLink ? '4 2' : isFactRel ? '2 2' : 'none'}
                         strokeOpacity={opacity}
                       />
                       {e.rel_type && isConnected && (
                         <text
                           x={(s.x + t.x) / 2}
                           y={(s.y + t.y) / 2 - 4}
-                          fill="#94a3b8"
+                          fill={isMasterRel ? '#fbbf24' : '#94a3b8'}
                           fontSize="9"
-                          fontFamily="monospace"
+                          fontFamily="var(--font-sans), sans-serif"
+                          fontWeight="500"
                           textAnchor="middle"
                           opacity={opacity}
-                          className="pointer-events-none"
+                          className="pointer-events-none drop-shadow"
                         >
                           {e.rel_type}
                         </text>
@@ -610,8 +633,8 @@ export default function CaseEditor() {
                 {simNodes.current.map((node) => {
                   if (!isNodeVisibleInTime(node)) return null
 
-                  const isSelected = selectedNode?.id === node.id
-                  const isConnected = !connectedNodeIds || connectedNodeIds.has(node.id)
+                  const isSelected = selectedNode && String(selectedNode.id) === String(node.id)
+                  const isConnected = !connectedNodeIds || connectedNodeIds.has(String(node.id))
                   const opacity = isConnected ? 1 : 0.15
                   const color = TYPE_COLORS[node.entity_type] || TYPE_COLORS.other
                   const isCenter = !!node.is_center
@@ -656,7 +679,7 @@ export default function CaseEditor() {
                         fill={color}
                         fontSize={isCenter ? '14' : '10'}
                         fontWeight="bold"
-                        fontFamily="monospace"
+                        fontFamily="var(--font-sans), sans-serif"
                         className="pointer-events-none"
                       >
                         {isCenter ? '★' : node.entity_type === 'fact' ? 'F' : node.name?.charAt(0) || '•'}
@@ -668,8 +691,9 @@ export default function CaseEditor() {
                         textAnchor="middle"
                         fill={isSelected ? '#38e0ff' : '#cbd5e1'}
                         fontSize="10"
-                        fontFamily="monospace"
-                        className="pointer-events-none"
+                        fontFamily="var(--font-sans), sans-serif"
+                        fontWeight={isSelected ? '600' : 'normal'}
+                        className="pointer-events-none drop-shadow"
                       >
                         {node.name?.length > 20 ? node.name.slice(0, 18) + '…' : node.name}
                       </text>
@@ -822,7 +846,7 @@ export default function CaseEditor() {
 
                     {/* Хэрэв entity бол */}
                     {typeof selectedNode.id === 'number' && (
-                      <div className="space-y-3 pt-3 border-t border-line">
+                      <div className="space-y-4 pt-3 border-t border-line">
                         <div className="flex items-center justify-between text-xs font-mono">
                           <Link
                             to={`/entities/${selectedNode.id}`}
@@ -850,12 +874,129 @@ export default function CaseEditor() {
                           </p>
                         )}
 
+                        {/* Холбогдох бусад субъектүүд (Direct Connected Entities with Jump) */}
+                        {(() => {
+                          const connected = []
+                          const sId = selectedNode.id
+                          for (const e of simEdges.current) {
+                            const srcId = typeof e.source === 'object' ? e.source.id : e.source
+                            const tgtId = typeof e.target === 'object' ? e.target.id : e.target
+                            if (srcId === sId && typeof tgtId === 'number') {
+                              const otherNode = simNodes.current.find((n) => n.id === tgtId)
+                              if (otherNode) connected.push({ node: otherNode, role: e.rel_type, dir: 'out' })
+                            } else if (tgtId === sId && typeof srcId === 'number') {
+                              const otherNode = simNodes.current.find((n) => n.id === srcId)
+                              if (otherNode) connected.push({ node: otherNode, role: e.rel_type, dir: 'in' })
+                            }
+                          }
+                          if (!connected.length) return null
+
+                          return (
+                            <div className="space-y-2 pt-2 border-t border-line/60">
+                              <div className="text-[11px] font-mono text-dim font-bold flex items-center justify-between">
+                                <span>ХОЛБОГДОХ СУБЪЕКТҮҮД ({connected.length})</span>
+                                <span className="text-[9px] text-faint">дарж үсрэх</span>
+                              </div>
+                              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                                {connected.map((item, idx) => (
+                                  <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedNode(item.node)
+                                      setActiveTab('inspector')
+                                    }}
+                                    className="w-full p-2 bg-surface-2 hover:bg-surface-3 hover:border-accent-line border border-line rounded flex items-center justify-between text-left transition group"
+                                  >
+                                    <div className="min-w-0 pr-2">
+                                      <div className="text-xs font-bold text-text group-hover:text-accent truncate">
+                                        {item.node.name}
+                                      </div>
+                                      <div className="text-[10px] font-mono text-dim flex items-center gap-1.5 mt-0.5">
+                                        <span className="text-accent">{item.role || 'холбоотой'}</span>
+                                        <span>• {item.node.entity_type}</span>
+                                      </div>
+                                    </div>
+                                    <ArrowRight size={13} className="text-dim group-hover:text-accent group-hover:translate-x-0.5 transition shrink-0" />
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )
+                        })()}
+
+                        {/* Шууд баримтууд & Эх сурвалжийн жагсаалт */}
+                        {(() => {
+                          const entityFacts = facts.filter((f) => f.entity_id === selectedNode.id)
+                          if (!entityFacts.length) return null
+
+                          return (
+                            <div className="space-y-2.5 pt-2 border-t border-line/60">
+                              <div className="text-[11px] font-mono font-bold text-accent flex items-center justify-between">
+                                <span>ЭНЭ СУБЪЕКТИЙН БАРИМТУУД ({entityFacts.length})</span>
+                                <span className="text-[9px] text-dim font-normal">нотлох эх сурвалжтай</span>
+                              </div>
+                              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                                {entityFacts.map((fact) => (
+                                  <div
+                                    key={fact.id}
+                                    className="p-2.5 bg-surface-2/90 border border-line rounded space-y-1.5 hover:border-accent-line/60 transition"
+                                  >
+                                    <div className="flex items-center justify-between text-[10px] font-mono text-dim">
+                                      <span className="flex items-center gap-1 text-accent font-bold">
+                                        <Calendar size={11} /> {fact.fact_date || 'Огноогүй'}
+                                      </span>
+                                      <span className="text-faint uppercase text-[9px]">
+                                        {fact.topic || fact.fact_type}
+                                      </span>
+                                    </div>
+
+                                    <p className="text-xs text-text leading-relaxed">
+                                      {fact.fact_text}
+                                    </p>
+
+                                    {fact.source_quote && (
+                                      <blockquote className="border-l-2 border-accent pl-2 text-[11px] text-dim italic">
+                                        "{fact.source_quote}"
+                                      </blockquote>
+                                    )}
+
+                                    {/* Source Link and SHA-256 */}
+                                    <div className="pt-1.5 border-t border-line/50 flex flex-col gap-1 text-[10px] font-mono">
+                                      {fact.source_url ? (
+                                        <a
+                                          href={fact.source_url}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="text-accent hover:underline flex items-center gap-1 truncate"
+                                        >
+                                          <ExternalLink size={11} />
+                                          <span className="truncate">{fact.source_title || fact.source_url}</span>
+                                        </a>
+                                      ) : fact.source_title ? (
+                                        <span className="text-dim truncate">{fact.source_title}</span>
+                                      ) : null}
+
+                                      {fact.sha256 && (
+                                        <div className="flex items-center gap-1 text-[9px] text-ok font-mono bg-ink-950/80 px-1.5 py-0.5 rounded border border-ok/20">
+                                          <ShieldCheck size={11} className="shrink-0" />
+                                          <span className="truncate select-all">SHA: {fact.sha256.slice(0, 20)}…</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )
+                        })()}
+
                         <button
                           onClick={() => setActiveTab('entity_timeline')}
                           className="w-full py-2 bg-surface-2 hover:bg-surface-3 border border-line text-xs font-mono text-text rounded flex items-center justify-center gap-2 transition"
                         >
                           <Activity size={14} className="text-accent" />
-                          Субъектийн хэрэг дэх түүхийг шүүх
+                          Субъектийн хэрэг дэх бүтэн түүхийг шүүх
                         </button>
                       </div>
                     )}
@@ -895,15 +1036,47 @@ export default function CaseEditor() {
                               )}
 
                               {fact.source_url && (
-                                <a
-                                  href={fact.source_url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-xs text-accent hover:underline flex items-center gap-1"
-                                >
-                                  Эх сурвалж үзэх <ExternalLink size={12} />
-                                </a>
+                                <div className="p-2 bg-surface-2 border border-line rounded flex items-center justify-between">
+                                  <div className="text-[11px] font-mono text-dim truncate mr-2">
+                                    {fact.source_title || 'Эх сурвалж'}
+                                  </div>
+                                  <a
+                                    href={fact.source_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-xs text-accent hover:underline flex items-center gap-1 shrink-0 font-mono font-bold"
+                                  >
+                                    Линк нээх <ExternalLink size={12} />
+                                  </a>
+                                </div>
                               )}
+
+                              {/* Харьяалагдах субъект рүү үсрэх */}
+                              {fact.entity_id && (() => {
+                                const parentEnt = entities.find((e) => e.id === fact.entity_id)
+                                const parentNode = simNodes.current.find((n) => n.id === fact.entity_id)
+                                if (!parentEnt) return null
+                                return (
+                                  <div className="pt-2 border-t border-line/60">
+                                    <div className="text-[10px] font-mono text-dim mb-1">ХАРЬЯАЛАГДАХ СУБЪЕКТ:</div>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (parentNode) {
+                                          setSelectedNode(parentNode)
+                                          setActiveTab('inspector')
+                                        }
+                                      }}
+                                      className="w-full p-2 bg-surface-2 hover:bg-surface-3 hover:border-accent-line border border-line rounded flex items-center justify-between text-left transition group"
+                                    >
+                                      <span className="text-xs font-bold text-text group-hover:text-accent truncate">
+                                        {parentEnt.name}
+                                      </span>
+                                      <ArrowRight size={13} className="text-dim group-hover:text-accent group-hover:translate-x-0.5 transition shrink-0" />
+                                    </button>
+                                  </div>
+                                )
+                              })()}
                             </>
                           )
                         })()}

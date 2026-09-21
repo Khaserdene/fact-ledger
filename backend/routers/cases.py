@@ -140,6 +140,7 @@ def get_case_subgraph(slug: str, db: Session = Depends(get_db)) -> Dict[str, Any
                 "start_date": str(r.start_date) if r.start_date else None,
                 "end_date": str(r.end_date) if r.end_date else None,
                 "source_quote": r.source_quote,
+                "is_master_rel": True,
             })
 
     # Case links (with canvas coords)
@@ -189,7 +190,7 @@ def get_case_subgraph(slug: str, db: Session = Depends(get_db)) -> Dict[str, Any
             "role": link.role if link else "EVIDENCE_FOR",
         })
 
-    # Graph edges: case → entities, case → facts, entity ↔ entity (master)
+    # Graph edges: case → entities, case → facts, entity ↔ entity (master), fact → entity
     graph_edges = []
     for l in links:
         target_id = l.entity_id if l.entity_id else f"fact-{l.fact_id}"
@@ -198,6 +199,15 @@ def get_case_subgraph(slug: str, db: Session = Depends(get_db)) -> Dict[str, Any
             "target": target_id,
             "rel_type": l.role,
         })
+    # Холбогдох субъект рүү фактын ирмэг татах (fact node → entity node)
+    for f in facts:
+        if f.get("entity_id") and f["entity_id"] in entity_ids:
+            graph_edges.append({
+                "source": f["entity_id"],
+                "target": f"fact-{f['id']}",
+                "rel_type": "нотлох_баримт",
+                "is_fact_edge": True,
+            })
     for e in edges:
         graph_edges.append(e)
 
