@@ -1,7 +1,11 @@
-"""Үнэний Бүртгэл — FastAPI аппликэйшн.
+import sys
+from pathlib import Path
 
-Схемийг Alembic удирдана: `alembic upgrade head` (start.bat автоматаар ажиллуулна).
-"""
+# Add backend directory to sys.path so modules and routers can be imported from anywhere
+BACKEND_DIR = Path(__file__).resolve().parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -16,6 +20,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/")
+def root():
+    return {
+        "name": "Fact Ledger API",
+        "status": "online",
+        "docs_url": "/docs",
+        "health_url": "/health"
+    }
 
 app.include_router(system.router)
 app.include_router(auth.router)
