@@ -62,7 +62,9 @@ export default function KnowledgeGraph({
   const [size, setSize] = useState({ w: 800, h: 600 })
   const [, forceRender] = useState(0)
   const [hoverId, setHoverId] = useState(null)
+  const [dragMode, setDragMode] = useState('elastic') // 'elastic' | 'local' | 'rigid'
   const dragRef = useRef(null)
+  const simRef = useRef(null)
 
   // Контейнерийн хэмжээг ажиглана
   useEffect(() => {
@@ -259,9 +261,14 @@ export default function KnowledgeGraph({
         .force('center', forceCenter(size.w / 2, size.h / 2).strength(0.05))
     }
 
+    simRef.current = sim
     sim.stop()
     for (let i = 0; i < TICKS; i++) sim.tick()
     forceRender((v) => v + 1)
+
+    sim.on('tick', () => {
+      forceRender((v) => v + 1)
+    })
 
     return () => sim.stop()
   }, [data, size.w, size.h, layoutMode, selectedId, clusterCenters])
@@ -271,6 +278,16 @@ export default function KnowledgeGraph({
     const svg = select(svgRef.current)
     const behavior = d3zoom()
       .scaleExtent([0.2, 4])
+      .filter((event) => {
+        // Зүүн товч (0) эсвэл Голын товч / хүрд (1) дээр пан хийнэ
+        // Зүүн товч нь node дээр дарсан үед d3zoom эхлэхгүй (node drag хийгдэнэ)
+        if (event.type === 'mousedown' || event.type === 'touchstart') {
+          if (event.button === 1) return true // Middle mouse button always pans
+          if (event.target && event.target.closest && event.target.closest('.graph-node')) return false
+          return !event.button || event.button === 0
+        }
+        return true
+      })
       .on('zoom', (event) => {
         select(svgRef.current.querySelector('g.viewport')).attr(
           'transform',
@@ -296,8 +313,12 @@ export default function KnowledgeGraph({
   }, [onSelect])
 
   function handleSvgPointerDown(e) {
+    if (e.button === 1) {
+      // Middle mouse button - prevent default scroll/autoscroll icon
+      e.preventDefault()
+    }
     if (!e.target.closest('.graph-node')) {
-      svgDownPos.current = { x: e.clientX, y: e.clientY }
+      svgDownPos.current = { x: e.clientX, y: e.clientY, button: e.button }
     } else {
       svgDownPos.current = null
     }
@@ -307,8 +328,9 @@ export default function KnowledgeGraph({
     if (!svgDownPos.current) return
     const dx = Math.abs(e.clientX - svgDownPos.current.x)
     const dy = Math.abs(e.clientY - svgDownPos.current.y)
+    const btn = svgDownPos.current.button
     svgDownPos.current = null
-    if (dx < 6 && dy < 6 && !e.target.closest('.graph-node')) {
+    if (btn === 0 && dx < 6 && dy < 6 && !e.target.closest('.graph-node')) {
       if (onSelect) {
         onSelect(null)
       }
@@ -322,9 +344,82 @@ export default function KnowledgeGraph({
   }
 
   function startDrag(event, d) {
+    if (event.button !== 0) return
     event.stopPropagation()
     const pt = svgPoint(event)
-    dragRef.current = { id: d.id, dx: d.x - pt.x, dy: d.y - pt.y, moved: false }
+
+    // Тухайн node-тэй шууд холбоотой (1st-degree) зангилаануудыг олно
+    const neighbors = []
+    for (const e of simEdges.current) {
+      const sId = String(typeof e.source === 'object' ? e.source.id : e.source)
+      const tId = String(typeof e.target === 'object' ? e.target.id : e.target)
+      const myId = String(d.id)
+      if (sId === myId) {
+        const neighbor = simNodes.current.find((n) => String(n.id) === tId)
+        if (neighbor && String(neighbor.id) !== myId && !neighbors.some((n) => String(n.node.id) === String(neighbor.id))) {
+          neighbors.push({ node: neighbor, initX: neighbor.x, initY: neighbor.y, vx: 0, vy: 0 })
+        }
+      } else if (tId === myId) {
+        const neighbor = simNodes.current.find((n) => String(n.id) === sId)
+        if (neighbor && String(neighbor.id) !== myId && !neighbors.some((n) => String(n.node.id) === String(neighbor.id))) {
+          neighbors.push({ node: neighbor, initX: neighbor.x, initY: neighbor.y, vx: 0, vy: 0 })
+        }
+      }
+    }
+
+    if (dragMode === 'elastic') {
+      // 1. Уян пүрш (Live D3 Force): чирч буй node-ийг бэхлэн simulation-ийг асаана
+      d.fx = pt.x
+      d.fy = pt.y
+      if (simRef.current) {
+        simRef.current.alphaTarget(0.3).restart()
+      }
+    }
+
+    dragRef.current = {
+      id: d.id,
+      node: d,
+      initNodeX: d.x,
+      initNodeY: d.y,
+      initPtX: pt.x,
+      initPtY: pt.y,
+      currTargetX: pt.x,
+      currTargetY: pt.y,
+      neighbors,
+      moved: false,
+    }
+
+    if (dragMode === 'local') {
+      function runLocalSpring() {
+        const st = dragRef.current
+        if (!st) return
+
+        const deltaX = st.currTargetX - st.initPtX
+        const deltaY = st.currTargetY - st.initPtY
+        const targetFollowFactor = 0.55
+        const k = 0.18 // Spring stiffness
+        const friction = 0.72 // Damping friction
+
+        for (const item of st.neighbors) {
+          const desiredX = item.initX + deltaX * targetFollowFactor
+          const desiredY = item.initY + deltaY * targetFollowFactor
+
+          const forceX = (desiredX - item.node.x) * k
+          const forceY = (desiredY - item.node.y) * k
+
+          item.vx = (item.vx + forceX) * friction
+          item.vy = (item.vy + forceY) * friction
+
+          item.node.x += item.vx
+          item.node.y += item.vy
+        }
+
+        forceRender((v) => v + 1)
+        st.animFrame = requestAnimationFrame(runLocalSpring)
+      }
+      dragRef.current.animFrame = requestAnimationFrame(runLocalSpring)
+    }
+
     window.addEventListener('pointermove', onDragMove)
     window.addEventListener('pointerup', onDragEnd)
   }
@@ -332,30 +427,59 @@ export default function KnowledgeGraph({
   function onDragMove(event) {
     const st = dragRef.current
     if (!st) return
-    const d = simNodes.current.find((n) => n.id === st.id)
+    const d = st.node
     if (!d) return
     const pt = svgPoint(event)
-    d.x = pt.x + st.dx
-    d.y = pt.y + st.dy
-    st.moved = true
-    forceRender((v) => v + 1)
+    const deltaX = pt.x - st.initPtX
+    const deltaY = pt.y - st.initPtY
+
+    if (Math.hypot(deltaX, deltaY) > 4) st.moved = true
+    st.currTargetX = pt.x
+    st.currTargetY = pt.y
+
+    if (dragMode === 'elastic') {
+      d.fx = pt.x
+      d.fy = pt.y
+    } else if (dragMode === 'rigid') {
+      d.x = st.initNodeX + deltaX
+      d.y = st.initNodeY + deltaY
+      for (const item of st.neighbors) {
+        item.node.x = item.initX + deltaX
+        item.node.y = item.initY + deltaY
+      }
+      forceRender((v) => v + 1)
+    } else {
+      d.x = st.initNodeX + deltaX
+      d.y = st.initNodeY + deltaY
+      forceRender((v) => v + 1)
+    }
   }
 
   function onDragEnd(event) {
-    const st = dragRef.current
-    dragRef.current = null
     window.removeEventListener('pointermove', onDragMove)
     window.removeEventListener('pointerup', onDragEnd)
-    if (st && !st.moved && onSelect) {
-      const d = simNodes.current.find((n) => n.id === st.id)
-      if (d) {
-        if (selectedId === d.id) {
+
+    const st = dragRef.current
+    if (st) {
+      if (st.animFrame) cancelAnimationFrame(st.animFrame)
+      if (dragMode === 'elastic') {
+        if (st.node) {
+          st.node.fx = null
+          st.node.fy = null
+        }
+        if (simRef.current) {
+          simRef.current.alphaTarget(0)
+        }
+      }
+      if (!st.moved && onSelect) {
+        if (selectedId === st.id) {
           onSelect(null)
         } else {
-          onSelect(d)
+          onSelect(st.node)
         }
       }
     }
+    dragRef.current = null
   }
 
   function svgPoint(event) {
@@ -459,6 +583,29 @@ export default function KnowledgeGraph({
             <Palette size={13} className={colorMode === 'party' ? 'text-amber-400' : 'text-dim'} />
             <span>{colorMode === 'party' ? 'Намын өнгө' : 'Төрлийн өнгө'}</span>
           </button>
+        </div>
+
+        {/* Чирэлтийн физик горимууд (Drag Physics Modes) */}
+        <div className="flex items-center gap-1 pl-2 border-l border-line/60">
+          <span className="text-[10px] font-mono text-dim px-1 uppercase tracking-wider hidden lg:inline">Чирэлт:</span>
+          {[
+            { id: 'elastic', label: '🌊 Уян пүрш', desc: 'Байгалийн пүрш шиг сунаж татагдан, зангилаанууд мөргөлдөхгүй' },
+            { id: 'local', label: '🎯 Локал', desc: 'Зөвхөн хөршүүд нь уян резин шиг гулсаж татагдана' },
+            { id: 'rigid', label: '🧱 Бүлэг', desc: 'Холбоотой зангилаануудын бүтэц 100% хадгалагдаж нэгэн цул болж зөөгдөнө' },
+          ].map((dm) => (
+            <button
+              key={dm.id}
+              onClick={() => setDragMode(dm.id)}
+              title={dm.desc}
+              className={`px-2 py-1 text-xs font-mono rounded transition flex items-center gap-1 ${
+                dragMode === dm.id
+                  ? 'bg-accent/20 border border-accent text-accent font-bold shadow-[0_0_8px_rgb(56_224_255/0.2)]'
+                  : 'text-dim hover:text-text hover:bg-surface-2'
+              }`}
+            >
+              {dm.label}
+            </button>
+          ))}
         </div>
       </div>
 

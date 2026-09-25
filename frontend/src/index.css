@@ -246,3 +246,24 @@ body {
   border: 2px solid var(--color-ink-950);
 }
 ::-webkit-scrollbar-thumb:hover { background: rgb(56 224 255 / 0.3); }
+
+/* Хэвлэх ба Экспортлох горим (Print / Dossier PDF styles) */
+@media print {
+  header, nav, aside, button, .no-print {
+    display: none !important;
+  }
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .print-clean {
+    border: 1px solid #cccccc !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+  }
+  @page {
+    margin: 1.5cm;
+    size: A4 portrait;
+  }
+}

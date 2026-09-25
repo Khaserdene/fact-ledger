@@ -346,15 +346,25 @@ class CaseCreate(BaseModel):
     title: str
     slug: str
     description: Optional[str] = None
+    category: str = "scandal"
     status: str = "DRAFT"
     cover_entity_id: Optional[int] = None
+    amount_billion: Optional[float] = None
+    currency: str = "MNT"
+    case_year: Optional[int] = None
+    cabinet_id: Optional[int] = None
 
 
 class CaseUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
+    category: Optional[str] = None
     status: Optional[str] = None
     cover_entity_id: Optional[int] = None
+    amount_billion: Optional[float] = None
+    currency: Optional[str] = None
+    case_year: Optional[int] = None
+    cabinet_id: Optional[int] = None
 
 
 class CaseOut(BaseModel):
@@ -364,8 +374,13 @@ class CaseOut(BaseModel):
     slug: str
     title: str
     description: Optional[str] = None
+    category: str = "scandal"
     status: str
     cover_entity_id: Optional[int] = None
+    amount_billion: Optional[float] = None
+    currency: str = "MNT"
+    case_year: Optional[int] = None
+    cabinet_id: Optional[int] = None
     links_count: int = 0
     entities_count: int = 0
     created_at: datetime
@@ -400,3 +415,53 @@ class CaseLinkOut(BaseModel):
     x: Optional[float] = None
     y: Optional[float] = None
     created_at: datetime
+
+
+# ── Auth & Sessions ───────────────────────────────────────────────────────────
+
+class LoginRequest(BaseModel):
+    code: str
+    client_label: Optional[str] = None
+
+
+class SessionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    session_token: str
+    code_type: str
+    code_value: Optional[str] = None
+    client_label: Optional[str] = None
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    status: str
+    created_at: datetime
+    last_active_at: Optional[datetime] = None
+    expires_at: datetime
+    remaining_seconds: Optional[int] = None
+
+
+class LoginResponse(BaseModel):
+    token: str
+    session_id: int
+    status: str
+    code_type: str = "time_code"
+    is_master: bool = False
+    expires_at: datetime
+
+
+class SessionExtendRequest(BaseModel):
+    minutes: int = 120
+
+
+class SessionLabelUpdate(BaseModel):
+    client_label: str
+
+
+class SessionVerifyResponse(BaseModel):
+    valid: bool
+    is_master: bool = False
+    reason: Optional[str] = None
+    session: Optional[SessionOut] = None
+
+

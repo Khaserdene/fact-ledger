@@ -3,7 +3,7 @@ import math
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 import models
 from database import get_db
@@ -101,6 +101,24 @@ def get_cabinet_budgets(db: Session = Depends(get_db)) -> Dict[str, Any]:
         if init_trill > 0:
             growth_pct = round(((final_trill - init_trill) / init_trill) * 100.0, 1)
 
+        # Тухайн Засгийн газрын үед холбогдох дуулиант хэргүүд
+        cabinet_cases = (
+            db.query(models.Case)
+            .filter(models.Case.cabinet_id == cid)
+            .all()
+        )
+        total_scandal_billion = sum(c_item.amount_billion or 0.0 for c_item in cabinet_cases)
+        total_scandal_trillion = round(total_scandal_billion / 1000.0, 3)
+
+        # Төсвийн хулгай / дарамтын хувь (тухайн үеийн дундаж жилийн төсөвт эзлэх хувь)
+        avg_annual_trill = (
+            sum(ab["amount_trillion"] for ab in annual_budgets) / len(annual_budgets)
+            if annual_budgets else final_trill
+        )
+        scandal_to_budget_pct = 0.0
+        if avg_annual_trill > 0:
+            scandal_to_budget_pct = round((total_scandal_trillion / avg_annual_trill) * 100.0, 1)
+
         items.append({
             "id": cid,
             "name": entity_name,
@@ -120,7 +138,21 @@ def get_cabinet_budgets(db: Session = Depends(get_db)) -> Dict[str, Any]:
             "tldr": entity.tldr_summary if entity else c.get("tldr"),
             "ministers_count": rel_counts.get(cid, 0),
             "facts_count": fact_counts.get(cid, 0),
-            "all_facts": facts_by_entity.get(cid, [])
+            "all_facts": facts_by_entity.get(cid, []),
+            "scandals_count": len(cabinet_cases),
+            "total_scandal_billion": round(total_scandal_billion, 1),
+            "total_scandal_trillion": total_scandal_trillion,
+            "scandal_to_budget_pct": scandal_to_budget_pct,
+            "cases": [
+                {
+                    "id": cs.id,
+                    "slug": cs.slug,
+                    "title": cs.title,
+                    "amount_billion": cs.amount_billion,
+                    "year": cs.case_year
+                }
+                for cs in cabinet_cases
+            ]
         })
 
     # Нийт ерөнхий статистик
@@ -632,6 +664,18 @@ def get_macro_analytics(
         inf_vals = [inflation_data[yr] for yr in range(st_yr, en_yr + 1) if yr in inflation_data]
         cab_avg_inf = round(sum(inf_vals) / len(inf_vals), 1) if inf_vals else None
 
+        # Тухайн Засгийн газрын үеийн хэргүүдийн нийт дүн ба Төсөвт эзлэх хувь
+        cab_cases = db.query(models.Case).filter(models.Case.cabinet_id == c["id"]).all()
+        scandal_bill = sum(cs.amount_billion or 0.0 for cs in cab_cases)
+        scandal_trill = round(scandal_bill / 1000.0, 3)
+
+        # Төсвийн хулгайн харьцаа
+        b_vals = [series_data.get("budget_expenditure", {}).get(yr) for yr in range(st_yr, en_yr + 1) if yr in series_data.get("budget_expenditure", {})]
+        avg_b_trill = (sum(b_vals) / len(b_vals)) if b_vals else get_val_at("budget_expenditure", en_yr)
+        scandal_ratio_pct = 0.0
+        if avg_b_trill and avg_b_trill > 0:
+            scandal_ratio_pct = round((scandal_trill / avg_b_trill) * 100.0, 1)
+
         cabinet_scorecard.append({
             "id": c["id"],
             "name": c["name"],
@@ -648,7 +692,15 @@ def get_macro_analytics(
             "meat_growth_pct": get_diff_pct("meat_price_kg"),
             "housing_growth_pct": get_diff_pct("housing_price_sqm"),
             "gold_growth_pct": get_diff_pct("gold_price_mnt_gram"),
-            "avg_inflation_pct": cab_avg_inf
+            "avg_inflation_pct": cab_avg_inf,
+            "scandals_count": len(cab_cases),
+            "total_scandal_billion": round(scandal_bill, 1),
+            "total_scandal_trillion": scandal_trill,
+            "scandal_to_budget_pct": scandal_ratio_pct,
+            "top_scandals": [
+                {"title": cs.title, "amount_billion": cs.amount_billion, "slug": cs.slug}
+                for cs in sorted(cab_cases, key=lambda x: x.amount_billion or 0.0, reverse=True)[:3]
+            ]
         })
 
     return {
@@ -672,6 +724,189 @@ def get_macro_analytics(
             "benchmarks": benchmarks
         },
         "cabinet_scorecard": cabinet_scorecard
+    }
+
+
+# ── Media Intelligence & 'Хаалтын гэрээ' илрүүлэлт ─────────────────────────
+
+@router.get("/media-intelligence")
+def get_media_intelligence(
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """Хэвлэл мэдээллийн эх сурвалжуудын хандлага (bias/sentiment), 
+    мэдээллийн дүлий бүс (Blackout / Silence) ба хаалтын гэрээний магадлалын шинжилгээ.
+    """
+    from urllib.parse import urlparse
+
+    sources = db.query(models.Source).all()
+    facts = (
+        db.query(models.Fact)
+        .options(joinedload(models.Fact.source), joinedload(models.Fact.entity))
+        .filter(models.Fact.source_id.isnot(None))
+        .all()
+    )
+    cases = db.query(models.Case).options(joinedload(models.Case.links)).all()
+    entities = {e.id: e for e in db.query(models.Entity).all()}
+
+    # 1. Эх сурвалжуудын домэйноор бүлэглэх
+    domain_data = {}
+    for s in sources:
+        domain = "бусад / тэмдэглэл"
+        if s.url:
+            parsed = urlparse(s.url)
+            domain = parsed.netloc.replace("www.", "") or "бусад"
+        elif s.category in ["document", "note"]:
+            domain = f"албан_{s.category}"
+
+        if domain not in domain_data:
+            domain_data[domain] = {
+                "domain": domain,
+                "sources_count": 0,
+                "categories": set(),
+                "facts_count": 0,
+                "entity_sentiments": {}, # entity_id -> [scores]
+                "entity_mentions": {},   # entity_id -> count
+                "case_mentions": set(),   # case_id-ууд
+            }
+        domain_data[domain]["sources_count"] += 1
+        domain_data[domain]["categories"].add(s.category)
+
+    # 2. Факт ба субъектүүдийн мэдрэмжийн тооцоолол
+    for f in facts:
+        if not f.source:
+            continue
+        domain = "бусад / тэмдэглэл"
+        if f.source.url:
+            domain = urlparse(f.source.url).netloc.replace("www.", "") or "бусад"
+        elif f.source.category in ["document", "note"]:
+            domain = f"албан_{f.source.category}"
+
+        if domain in domain_data:
+            d = domain_data[domain]
+            d["facts_count"] += 1
+            eid = f.entity_id
+            d["entity_mentions"][eid] = d["entity_mentions"].get(eid, 0) + 1
+            if f.sentiment_score is not None:
+                d["entity_sentiments"].setdefault(eid, []).append(f.sentiment_score)
+
+    # 3. Мөрдлөгийн хэргүүд дэх дурдалт ба Дүлий бүс (Blackout Tracker)
+    # Аль ч сайт хэрэгтэй холбоотой хүний тухай бичсэн бол уг хэргийг дурдсанд тооцно
+    case_entity_map = {} # case_id -> set(entity_ids)
+    for c in cases:
+        case_entity_map[c.id] = {l.entity_id for l in c.links if l.entity_id}
+
+    for domain, d in domain_data.items():
+        for cid, e_set in case_entity_map.items():
+            if any(eid in d["entity_mentions"] for eid in e_set):
+                d["case_mentions"].add(cid)
+
+    # Media Profiles үүсгэх
+    media_profiles = []
+    for domain, d in domain_data.items():
+        if d["facts_count"] == 0 and d["sources_count"] < 2:
+            continue
+
+        # Дундаж мэдрэмж
+        all_sentiments = [score for scores in d["entity_sentiments"].values() for score in scores]
+        avg_sentiment = round(sum(all_sentiments) / len(all_sentiments), 2) if all_sentiments else 0.0
+
+        # Топ дурдагдсан субъектүүд ба тэдгээрийн хандлага
+        favored_entities = []
+        criticized_entities = []
+        for eid, cnt in d["entity_mentions"].items():
+            scores = d["entity_sentiments"].get(eid, [])
+            ent = entities.get(eid)
+            if not ent:
+                continue
+            e_avg = round(sum(scores) / len(scores), 2) if scores else 0.0
+            info = {
+                "entity_id": eid,
+                "name": ent.name,
+                "entity_type": ent.entity_type,
+                "mentions": cnt,
+                "sentiment_avg": e_avg,
+            }
+            if e_avg >= 0.2:
+                favored_entities.append(info)
+            elif e_avg <= -0.2:
+                criticized_entities.append(info)
+
+        favored_entities.sort(key=lambda x: (x["sentiment_avg"], x["mentions"]), reverse=True)
+        criticized_entities.sort(key=lambda x: (x["sentiment_avg"], -x["mentions"]))
+
+        # Дүлий бүс буюу огт бичээгүй томоохон хэргүүд (Silence / Blackout)
+        blackout_cases = []
+        for c in cases:
+            if c.id not in d["case_mentions"] and c.status == "PUBLISHED":
+                blackout_cases.append({
+                    "id": c.id,
+                    "title": c.title,
+                    "slug": c.slug,
+                    "category": c.category
+                })
+
+        # "Хаалтын гэрээний магадлалын индекс" (0–100%)
+        # Хэрэв тухайн эх сурвалж тодорхой улс төрчийг маш их магтаж (sentiment > 0.4), 
+        # мөртлөө түүний холбогдсон хэргийг огт бичээгүй (blackout) бол магадлал өндөр байна.
+        suspicious_agreements = []
+        for fav in favored_entities[:5]:
+            # Энэ хүн ямар нэг хэрэгт холбогдсон уу?
+            involved_cases = [c for c in cases if any(l.entity_id == fav["entity_id"] for l in c.links)]
+            # Гэтэл энэ эх сурвалж тэр хэргийн тухай огт дурдаагүй юу?
+            muted_cases = [c.title for c in involved_cases if c.id not in d["case_mentions"]]
+            if muted_cases:
+                contract_risk = min(95, int(fav["sentiment_avg"] * 50 + len(muted_cases) * 25 + fav["mentions"] * 5))
+                suspicious_agreements.append({
+                    "entity_name": fav["name"],
+                    "entity_id": fav["entity_id"],
+                    "favor_score": fav["sentiment_avg"],
+                    "muted_cases": muted_cases,
+                    "contract_probability_pct": contract_risk,
+                })
+
+        media_profiles.append({
+            "domain": domain,
+            "sources_count": d["sources_count"],
+            "facts_count": d["facts_count"],
+            "primary_categories": list(d["categories"]),
+            "average_sentiment": avg_sentiment,
+            "favored_entities": favored_entities[:4],
+            "criticized_entities": criticized_entities[:4],
+            "blackout_cases_count": len(blackout_cases),
+            "blackout_cases": blackout_cases[:6],
+            "suspicious_contracts": suspicious_agreements,
+        })
+
+    # Эрэмбэлэлт
+    media_profiles.sort(key=lambda x: (len(x["suspicious_contracts"]) > 0, x["facts_count"]), reverse=True)
+
+    # Томоохон хэргүүд дээрх хэвлэлүүдийн хамрах хүрээ (Coverage Matrix)
+    case_coverage = []
+    for c in cases:
+        reported_domains = [
+            d["domain"] for d in domain_data.values() if c.id in d["case_mentions"]
+        ]
+        silent_domains = [
+            d["domain"] for d in domain_data.values() 
+            if c.id not in d["case_mentions"] and not d["domain"].startswith("албан_") and d["facts_count"] >= 3
+        ]
+        case_coverage.append({
+            "case_id": c.id,
+            "title": c.title,
+            "slug": c.slug,
+            "category": c.category,
+            "reported_media_count": len(reported_domains),
+            "reported_domains": reported_domains,
+            "silent_media_count": len(silent_domains),
+            "silent_domains": silent_domains[:8],
+        })
+
+    case_coverage.sort(key=lambda x: x["reported_media_count"], reverse=True)
+
+    return {
+        "total_monitored_domains": len(media_profiles),
+        "media_profiles": media_profiles,
+        "case_coverage": case_coverage,
     }
 
 

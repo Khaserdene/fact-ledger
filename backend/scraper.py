@@ -3,7 +3,7 @@ import re
 import urllib.request
 import xml.etree.ElementTree as ET
 from typing import Optional
-from urllib.parse import urlparse, unquote
+from urllib.parse import urlparse, unquote, quote
 
 import httpx
 from bs4 import BeautifulSoup
@@ -113,9 +113,9 @@ def _scrape_wikipedia(url: str) -> dict:
     """Use Wikipedia Special:Export (XML) — works where the API is rate-limited."""
     m = _WIKI_RE.match(url)
     lang = m.group(1)
-    page_title = m.group(2)  # keep URL-encoded for the request
-
-    export_url = f"https://{lang}.wikipedia.org/wiki/Special:Export/{page_title}"
+    page_title = m.group(2)
+    quoted_title = quote(unquote(page_title))
+    export_url = f"https://{lang}.wikipedia.org/wiki/Special:Export/{quoted_title}"
 
     req = urllib.request.Request(export_url, headers=_URLLIB_HEADERS)
     with urllib.request.urlopen(req, timeout=20) as resp:

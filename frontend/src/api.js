@@ -1,9 +1,18 @@
 const BASE = '/api'
 
 async function req(method, path, body) {
+  const headers = { 'Content-Type': 'application/json' }
+  try {
+    const token = sessionStorage.getItem('fl_token') || localStorage.getItem('fl_token')
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+  } catch {
+    // ignore storage access issues
+  }
   const opts = {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers,
   }
   if (body !== undefined) opts.body = JSON.stringify(body)
   const res = await fetch(BASE + path, opts)
@@ -87,4 +96,16 @@ export const api = {
   updateCaseLink: (slug, linkId, data) => req('PATCH', `/cases/${slug}/links/${linkId}`, data),
   removeCaseLink: (slug, linkId) => req('DELETE', `/cases/${slug}/links/${linkId}`),
   getCaseEntityActivity: (slug, entityId) => req('GET', `/cases/${slug}/entity-activity?entityId=${entityId}`),
+  getCrossCaseAnalysis: (minCases = 2) => req('GET', `/cases/network/cross-case-analysis?min_cases=${minCases}`),
+  getMediaIntelligence: () => req('GET', '/analytics/media-intelligence'),
+
+  // Auth & Session удирдлага
+  login: (code, client_label) => req('POST', '/auth/login', { code, client_label }),
+  verifySession: () => req('GET', '/auth/verify'),
+  listSessions: (limit = 50) => req('GET', `/auth/sessions${qs({ limit })}`),
+  terminateSession: (id) => req('POST', `/auth/sessions/${id}/terminate`),
+  extendSession: (id, minutes = 120) => req('POST', `/auth/sessions/${id}/extend`, { minutes }),
+  updateSessionLabel: (id, client_label) => req('PATCH', `/auth/sessions/${id}/label`, { client_label }),
+  deleteSession: (id) => req('DELETE', `/auth/sessions/${id}`),
 }
+

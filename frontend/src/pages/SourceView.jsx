@@ -64,8 +64,8 @@ export default function SourceView() {
     <div>
       {/* Толгой */}
       <div className="mb-6">
-        <Link to="/" className="text-sm text-accent/80 hover:text-accent hover:underline mb-2 inline-block">
-          ← Эх сурвалжууд
+        <Link to="/sources" className="text-sm text-accent/80 hover:text-accent hover:underline mb-2 inline-block">
+          ← Бүх эх сурвалжууд
         </Link>
         <h1 className="font-display text-2xl font-bold text-text leading-snug">{source.title}</h1>
         <div className="flex flex-wrap items-center gap-3 mt-3 text-sm text-faint">

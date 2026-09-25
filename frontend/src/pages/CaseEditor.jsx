@@ -30,7 +30,9 @@ import {
   Filter,
   Check,
   ArrowRight,
-  Sparkles
+  Sparkles,
+  Printer,
+  FileDown
 } from 'lucide-react'
 import {
   forceCenter,
@@ -69,6 +71,8 @@ export default function CaseEditor() {
   // Сонгогдсон node
   const [selectedNode, setSelectedNode] = useState(null)
   const [activeTab, setActiveTab] = useState('case_timeline') // 'case_timeline' | 'inspector' | 'entity_timeline' | 'add'
+  const [layoutMode, setLayoutMode] = useState('force') // 'force' | 'timeline' | 'cluster'
+  const [dragMode, setDragMode] = useState('elastic') // 'elastic' | 'local' | 'rigid'
 
   // Timeline / Entity activity state
   const [entityActivity, setEntityActivity] = useState(null)
@@ -83,6 +87,7 @@ export default function CaseEditor() {
   // Subgraph nodes & edges layout
   const wrapRef = useRef(null)
   const svgRef = useRef(null)
+  const simRef = useRef(null)
   const simNodes = useRef([])
   const simEdges = useRef([])
   const [size, setSize] = useState({ w: 800, h: 600 })
@@ -140,6 +145,37 @@ export default function CaseEditor() {
       const db = b.fact_date || '9999-99-99'
       return da.localeCompare(db)
     })
+  }, [data])
+
+  // Цагийн хязгаар (Timeline Layout-д ашиглах жилийн хязгаар)
+  const yearBounds = useMemo(() => {
+    const years = []
+    if (data?.facts) {
+      for (const f of data.facts) {
+        if (f.fact_date) {
+          const yr = parseInt(f.fact_date.slice(0, 4), 10)
+          if (!isNaN(yr)) years.push(yr)
+        }
+      }
+    }
+    if (data?.graph?.nodes) {
+      for (const n of data.graph.nodes) {
+        if (n.date) {
+          const yr = parseInt(n.date.slice(0, 4), 10)
+          if (!isNaN(yr)) years.push(yr)
+        }
+        if (n.first_date) {
+          const yr = parseInt(n.first_date.slice(0, 4), 10)
+          if (!isNaN(yr)) years.push(yr)
+        }
+      }
+    }
+    if (years.length > 0) {
+      const minY = Math.min(...years)
+      const maxY = Math.max(...years)
+      return [minY, Math.max(maxY, minY + 1)]
+    }
+    return [2010, 2026]
   }, [data])
 
   // Цагийн мөчлөгүүд (Chronological Stages) — хэрэг бүрд тохируулан динамикаар эсвэл тусгайлан бодно
@@ -216,7 +252,7 @@ export default function CaseEditor() {
     return () => clearInterval(playTimerRef.current)
   }, [isPlaying, sortedFacts.length])
 
-  // D3 force simulation ажиллуулах
+  // D3 force simulation ажиллуулах (Layout Mode-оор ялгана)
   useEffect(() => {
     if (!data?.graph) return
 
@@ -236,35 +272,130 @@ export default function CaseEditor() {
     simEdges.current = links
 
     const sim = forceSimulation(nodes)
-      .force(
-        'link',
-        forceLink(links)
-          .id((d) => d.id)
-          .distance((d) => {
-            if (d.source.is_center || d.target.is_center) return 180
-            if (d.is_fact_edge || d.source.entity_type === 'fact' || d.target.entity_type === 'fact') return 80
-            if (d.is_master_rel) return 120
-            return 115
-          })
-          .strength(0.5)
-      )
-      .force('charge', forceManyBody().strength(-450))
-      .force('collide', forceCollide().radius((d) => (d.is_center ? 45 : d.entity_type === 'fact' ? 24 : 38)).iterations(2))
-      .force('center', forceCenter(size.w / 2, size.h / 2).strength(0.06))
-      .stop()
 
+    if (layoutMode === 'timeline') {
+      // 1. Хронологи / Он цагийн хуваарилалт (Timeline Swimlane Layout)
+      const [minY, maxY] = yearBounds
+      sim
+        .force(
+          'link',
+          forceLink(links)
+            .id((d) => d.id)
+            .distance(90)
+            .strength(0.3)
+        )
+        .force('charge', forceManyBody().strength(-280))
+        .force('collide', forceCollide().radius((d) => (d.is_center ? 45 : d.entity_type === 'fact' ? 22 : 36)).iterations(2))
+        .force(
+          'x',
+          forceX((d) => {
+            if (d.is_center) return size.w * 0.12
+            const dateStr = d.date || d.first_date
+            const yr = dateStr ? parseInt(dateStr.slice(0, 4), 10) : (minY + maxY) / 2
+            const progress = (yr - minY) / Math.max(maxY - minY, 1)
+            return size.w * 0.22 + progress * (size.w * 0.70)
+          }).strength(0.85)
+        )
+        .force(
+          'y',
+          forceY((d) => {
+            if (d.is_center) return size.h * 0.5
+            if (d.entity_type === 'person') return size.h * 0.28
+            if (d.entity_type === 'company') return size.h * 0.50
+            if (d.entity_type === 'org' || d.entity_type === 'government') return size.h * 0.72
+            if (d.entity_type === 'fact') return size.h * 0.86
+            return size.h * 0.5
+          }).strength(0.65)
+        )
+    } else if (layoutMode === 'cluster') {
+      // 2. Субъектийн төрлөөр баганачлах (Entity Types Cluster Layout)
+      const cx = size.w / 2
+      const cy = size.h / 2
+      const centers = {
+        case: { x: cx, y: cy },
+        person: { x: cx - size.w * 0.28, y: cy - size.h * 0.22 },
+        company: { x: cx + size.w * 0.28, y: cy - size.h * 0.22 },
+        org: { x: cx - size.w * 0.25, y: cy + size.h * 0.25 },
+        government: { x: cx - size.w * 0.25, y: cy + size.h * 0.25 },
+        parliament: { x: cx - size.w * 0.25, y: cy + size.h * 0.25 },
+        fact: { x: cx + size.w * 0.25, y: cy + size.h * 0.25 },
+        other: { x: cx, y: cy + size.h * 0.32 },
+      }
+
+      sim
+        .force(
+          'link',
+          forceLink(links)
+            .id((d) => d.id)
+            .distance(110)
+            .strength(0.35)
+        )
+        .force('charge', forceManyBody().strength(-350))
+        .force('collide', forceCollide().radius((d) => (d.is_center ? 45 : d.entity_type === 'fact' ? 22 : 36)).iterations(2))
+        .force(
+          'x',
+          forceX((d) => {
+            const c = centers[d.entity_type] || centers.other
+            return c.x
+          }).strength(0.65)
+        )
+        .force(
+          'y',
+          forceY((d) => {
+            const c = centers[d.entity_type] || centers.other
+            return c.y
+          }).strength(0.65)
+        )
+        .force('center', forceCenter(cx, cy).strength(0.05))
+    } else {
+      // 3. Стандарт Force Network (Default Concentric/Organic)
+      sim
+        .force(
+          'link',
+          forceLink(links)
+            .id((d) => d.id)
+            .distance((d) => {
+              if (d.source.is_center || d.target.is_center) return 180
+              if (d.is_fact_edge || d.source.entity_type === 'fact' || d.target.entity_type === 'fact') return 80
+              if (d.is_master_rel) return 120
+              return 115
+            })
+            .strength(0.5)
+        )
+        .force('charge', forceManyBody().strength(-450))
+        .force('collide', forceCollide().radius((d) => (d.is_center ? 45 : d.entity_type === 'fact' ? 24 : 38)).iterations(2))
+        .force('center', forceCenter(size.w / 2, size.h / 2).strength(0.06))
+    }
+
+    sim.stop()
     for (let i = 0; i < TICKS; i++) sim.tick()
+    simRef.current = sim
     forceRender((v) => v + 1)
 
-    return () => sim.stop()
-  }, [data, size.w, size.h])
+    sim.on('tick', () => {
+      forceRender((v) => v + 1)
+    })
 
-  // Zoom / Pan
+    return () => {
+      sim.stop()
+      simRef.current = null
+    }
+  }, [data, size.w, size.h, layoutMode, yearBounds])
+
+  // Zoom / Pan (Middle mouse support added)
   useEffect(() => {
     if (!svgRef.current) return
     const svg = select(svgRef.current)
     const behavior = d3zoom()
       .scaleExtent([0.2, 4])
+      .filter((event) => {
+        if (event.type === 'mousedown' || event.type === 'touchstart') {
+          if (event.button === 1) return true // Middle mouse button always pans
+          if (event.target && event.target.closest && event.target.closest('.case-node')) return false
+          return !event.button || event.button === 0
+        }
+        return true
+      })
       .on('zoom', (event) => {
         select(svgRef.current.querySelector('g.viewport')).attr(
           'transform',
@@ -293,30 +424,138 @@ export default function CaseEditor() {
     }
   }, [selectedNode, slug])
 
-  // Drag handlers
+  function svgPoint(event) {
+    const svg = svgRef.current
+    if (!svg) return { x: event.clientX, y: event.clientY }
+    const rect = svg.getBoundingClientRect()
+    const viewport = svg.querySelector('g.viewport')
+    const ctm = viewport && viewport.getCTM()
+    const px = event.clientX - rect.left
+    const py = event.clientY - rect.top
+    if (ctm) {
+      const inv = ctm.inverse()
+      return {
+        x: inv.a * px + inv.c * py + inv.e,
+        y: inv.b * px + inv.d * py + inv.f,
+      }
+    }
+    return { x: px, y: py }
+  }
+
+  // Drag handlers (3 selectable physics modes: Elastic, Local Spring, Rigid Cluster)
   function startDrag(event, d) {
+    if (event.button !== 0) return
     event.stopPropagation()
+    const pt = svgPoint(event)
+
+    // Хөрш зангилаануудыг олох
+    const neighbors = []
+    for (const e of simEdges.current) {
+      const sId = String(typeof e.source === 'object' ? e.source.id : e.source)
+      const tId = String(typeof e.target === 'object' ? e.target.id : e.target)
+      const myId = String(d.id)
+      if (sId === myId) {
+        const neighbor = simNodes.current.find((n) => String(n.id) === tId)
+        if (neighbor && String(neighbor.id) !== myId && !neighbors.some((n) => String(n.node.id) === String(neighbor.id))) {
+          neighbors.push({ node: neighbor, initX: neighbor.x, initY: neighbor.y, vx: 0, vy: 0 })
+        }
+      } else if (tId === myId) {
+        const neighbor = simNodes.current.find((n) => String(n.id) === sId)
+        if (neighbor && String(neighbor.id) !== myId && !neighbors.some((n) => String(n.node.id) === String(neighbor.id))) {
+          neighbors.push({ node: neighbor, initX: neighbor.x, initY: neighbor.y, vx: 0, vy: 0 })
+        }
+      }
+    }
+
+    if (dragMode === 'elastic') {
+      // 1. Уян пүрш (Live D3 Force): чирч буй node-ийг бэхлэн simulation-ийг асаана
+      d.fx = pt.x
+      d.fy = pt.y
+      if (simRef.current) {
+        simRef.current.alphaTarget(0.3).restart()
+      }
+    }
+
     dragRef.current = {
       id: d.id,
-      startX: event.clientX,
-      startY: event.clientY,
-      nodeX: d.x,
-      nodeY: d.y,
+      node: d,
+      initPtX: pt.x,
+      initPtY: pt.y,
+      initNodeX: d.x,
+      initNodeY: d.y,
+      currTargetX: pt.x,
+      currTargetY: pt.y,
+      neighbors,
+      animFrame: null,
       moved: false,
     }
+
+    // 2. Локал уян пүрш (Local Spring): инерцийн анимаци эхлүүлэх
+    if (dragMode === 'local') {
+      const runLocalSpring = () => {
+        const st = dragRef.current
+        if (!st) return
+
+        const deltaX = st.currTargetX - st.initPtX
+        const deltaY = st.currTargetY - st.initPtY
+        const targetFollowFactor = 0.55
+        const k = 0.18 // Spring stiffness
+        const friction = 0.72 // Damping friction
+
+        for (const item of st.neighbors) {
+          const desiredX = item.initX + deltaX * targetFollowFactor
+          const desiredY = item.initY + deltaY * targetFollowFactor
+
+          const forceX = (desiredX - item.node.x) * k
+          const forceY = (desiredY - item.node.y) * k
+
+          item.vx = (item.vx + forceX) * friction
+          item.vy = (item.vy + forceY) * friction
+
+          item.node.x += item.vx
+          item.node.y += item.vy
+        }
+
+        forceRender((v) => v + 1)
+        st.animFrame = requestAnimationFrame(runLocalSpring)
+      }
+      dragRef.current.animFrame = requestAnimationFrame(runLocalSpring)
+    }
+
     window.addEventListener('pointermove', onDragMove)
     window.addEventListener('pointerup', onDragEnd)
   }
 
   function onDragMove(event) {
-    if (!dragRef.current) return
-    const dx = event.clientX - dragRef.current.startX
-    const dy = event.clientY - dragRef.current.startY
-    if (Math.hypot(dx, dy) > 4) dragRef.current.moved = true
-    const target = simNodes.current.find((n) => n.id === dragRef.current.id)
-    if (target) {
-      target.x = dragRef.current.nodeX + dx
-      target.y = dragRef.current.nodeY + dy
+    const st = dragRef.current
+    if (!st) return
+    const d = st.node
+    if (!d) return
+    const pt = svgPoint(event)
+    const deltaX = pt.x - st.initPtX
+    const deltaY = pt.y - st.initPtY
+
+    if (Math.hypot(deltaX, deltaY) > 4) st.moved = true
+    st.currTargetX = pt.x
+    st.currTargetY = pt.y
+
+    if (dragMode === 'elastic') {
+      // 1. Уян пүрш (Live D3 Force)
+      d.fx = pt.x
+      d.fy = pt.y
+    } else if (dragMode === 'rigid') {
+      // 3. Бүлгээр зөөх (Rigid Cluster): 100% геометрийн хэлбэрээ яг тэр чигт нь хадгалж зөөнө
+      d.x = st.initNodeX + deltaX
+      d.y = st.initNodeY + deltaY
+      for (const item of st.neighbors) {
+        item.node.x = item.initX + deltaX
+        item.node.y = item.initY + deltaY
+      }
+      forceRender((v) => v + 1)
+    } else {
+      // 2. Локал пүрш (Local Spring): үндсэн node-ийг шууд дагуулж, хөршүүд нь анимациар хэлбэлзэн дагана
+      d.x = st.initNodeX + deltaX
+      d.y = st.initNodeY + deltaY
       forceRender((v) => v + 1)
     }
   }
@@ -324,6 +563,21 @@ export default function CaseEditor() {
   function onDragEnd() {
     window.removeEventListener('pointermove', onDragMove)
     window.removeEventListener('pointerup', onDragEnd)
+
+    const st = dragRef.current
+    if (st) {
+      if (st.animFrame) cancelAnimationFrame(st.animFrame)
+      if (dragMode === 'elastic') {
+        // Уян пүрш горим дуусах: simulation-ийг зөөлөн тайвшруулна
+        if (st.node) {
+          st.node.fx = null
+          st.node.fy = null
+        }
+        if (simRef.current) {
+          simRef.current.alphaTarget(0)
+        }
+      }
+    }
     dragRef.current = null
   }
 
@@ -463,8 +717,17 @@ export default function CaseEditor() {
           </div>
 
           <button
+            onClick={() => window.print()}
+            title="Энэхүү хэргийн мөрдлөгийн тайлан, нотлох баримтуудыг хэвлэх эсвэл PDF болгон экспортлох"
+            className="px-2.5 py-1.5 bg-surface-2 border border-line text-text font-mono text-xs rounded flex items-center gap-1.5 hover:border-accent hover:text-accent transition ml-auto"
+          >
+            <Printer size={13} />
+            <span className="hidden sm:inline">ТАЙЛАН ХЭВЛЭХ / PDF</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('add')}
-            className="px-3 py-1.5 bg-accent-dim border border-accent-line text-accent font-mono text-xs font-bold rounded flex items-center gap-1.5 hover:bg-accent hover:text-ink-950 transition ml-auto"
+            className="px-3 py-1.5 bg-accent-dim border border-accent-line text-accent font-mono text-xs font-bold rounded flex items-center gap-1.5 hover:bg-accent hover:text-ink-950 transition"
           >
             <Plus size={14} /> НЭМЭХ
           </button>
@@ -547,6 +810,54 @@ export default function CaseEditor() {
       <div className="flex-1 flex overflow-hidden border border-line rounded-lg bg-surface-1/40 relative">
         {/* Force Graph Canvas */}
         <div ref={wrapRef} className="flex-1 relative overflow-hidden bg-ink-950/60">
+          {/* Floating Layout & Navigation Bar */}
+          <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5 p-1 bg-surface-1/90 backdrop-blur border border-line rounded-lg shadow-lg">
+            <span className="text-[10px] font-mono text-dim px-2 uppercase tracking-wider hidden sm:inline">Эрэмбэлэлт:</span>
+            {[
+              { id: 'force', label: '🕸️ Сүлжээ (Force)' },
+              { id: 'timeline', label: '⏳ Он цаг (Timeline)' },
+              { id: 'cluster', label: '👥 Төрлөөр (Types)' },
+            ].map((m) => (
+              <button
+                key={m.id}
+                onClick={() => setLayoutMode(m.id)}
+                className={`px-2.5 py-1 text-xs font-mono rounded transition flex items-center gap-1 ${
+                  layoutMode === m.id
+                    ? 'bg-accent text-ink-950 font-bold shadow-[0_0_10px_rgb(56_224_255/0.25)]'
+                    : 'text-dim hover:text-text hover:bg-surface-2'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+            {/* Drag Physics Mode Switcher */}
+            <div className="w-[1px] h-4 bg-line mx-1" />
+            <span className="text-[10px] font-mono text-dim px-1 uppercase tracking-wider hidden md:inline">Чирэлт:</span>
+            {[
+              { id: 'elastic', label: '🌊 Уян пүрш', desc: 'Байгалийн пүрш шиг сунаж татагдан, зангилаанууд мөргөлдөхгүй' },
+              { id: 'local', label: '🎯 Локал', desc: 'Зөвхөн хөршүүд нь уян резин шиг гулсаж татагдана' },
+              { id: 'rigid', label: '🧱 Бүлэг', desc: 'Холбоотой зангилаануудын бүтэц 100% хадгалагдаж нэгэн цул болж зөөгдөнө' },
+            ].map((dm) => (
+              <button
+                key={dm.id}
+                onClick={() => setDragMode(dm.id)}
+                title={dm.desc}
+                className={`px-2 py-1 text-xs font-mono rounded transition flex items-center gap-1 ${
+                  dragMode === dm.id
+                    ? 'bg-accent/20 border border-accent text-accent font-bold shadow-[0_0_8px_rgb(56_224_255/0.2)]'
+                    : 'text-dim hover:text-text hover:bg-surface-2'
+                }`}
+              >
+                {dm.label}
+              </button>
+            ))}
+
+            <div className="w-[1px] h-4 bg-line mx-1" />
+            <span className="text-[10px] font-mono text-faint px-1 hidden lg:inline" title="Хулганы голын дугуй дарж канвас дээр чөлөөтэй хөдөлнө">
+              Хулганы хүрд (Pan)
+            </span>
+          </div>
+
           <svg
             ref={svgRef}
             width={size.w}
@@ -567,6 +878,37 @@ export default function CaseEditor() {
             <rect width="100%" height="100%" fill="url(#grid)" />
 
             <g className="viewport">
+              {/* Timeline Mode Grid & Labels */}
+              {layoutMode === 'timeline' && (
+                <g className="timeline-guides pointer-events-none opacity-40">
+                  {/* Swimlane horizontal guides */}
+                  <line x1={size.w * 0.18} y1={size.h * 0.28} x2={size.w * 0.96} y2={size.h * 0.28} stroke="#f59e0b" strokeDasharray="3 4" strokeWidth={0.8} />
+                  <text x={size.w * 0.20} y={size.h * 0.28 - 6} fill="#f59e0b" fontSize="10" fontFamily="var(--font-mono)">Улс төрчид / Хувь хүмүүс (Persons)</text>
+
+                  <line x1={size.w * 0.18} y1={size.h * 0.50} x2={size.w * 0.96} y2={size.h * 0.50} stroke="#10b981" strokeDasharray="3 4" strokeWidth={0.8} />
+                  <text x={size.w * 0.20} y={size.h * 0.50 - 6} fill="#10b981" fontSize="10" fontFamily="var(--font-mono)">Компаниуд & Банкууд (Companies)</text>
+
+                  <line x1={size.w * 0.18} y1={size.h * 0.72} x2={size.w * 0.96} y2={size.h * 0.72} stroke="#8b5cf6" strokeDasharray="3 4" strokeWidth={0.8} />
+                  <text x={size.w * 0.20} y={size.h * 0.72 - 6} fill="#8b5cf6" fontSize="10" fontFamily="var(--font-mono)">Сан & Төрийн байгууллагууд (Institutions)</text>
+
+                  {/* Vertical year lines */}
+                  {Array.from({ length: Math.max(yearBounds[1] - yearBounds[0] + 1, 2) }, (_, i) => yearBounds[0] + i)
+                    .filter((yr, i, arr) => arr.length <= 10 || yr % 2 === 0)
+                    .map((yr) => {
+                      const prog = (yr - yearBounds[0]) / Math.max(yearBounds[1] - yearBounds[0], 1)
+                      const x = size.w * 0.22 + prog * (size.w * 0.70)
+                      return (
+                        <g key={yr} transform={`translate(${x}, 0)`}>
+                          <line y1={40} y2={size.h - 30} stroke="#38e0ff" strokeDasharray="2 4" strokeWidth={0.6} />
+                          <text y={size.h - 10} fill="#38e0ff" fontSize="10" fontFamily="var(--font-mono)" textAnchor="middle">
+                            {yr}
+                          </text>
+                        </g>
+                      )
+                    })}
+                </g>
+              )}
+
               {/* Edges */}
               <g className="edges">
                 {simEdges.current.map((e, idx) => {

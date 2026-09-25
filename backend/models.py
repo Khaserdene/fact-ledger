@@ -332,17 +332,25 @@ class Case(Base):
     __tablename__ = "cases"
 
     STATUSES = ("DRAFT", "PUBLISHED")
+    CATEGORIES = ("scandal", "crisis", "megaproject", "faction", "procurement", "other")
 
     id = Column(Integer, primary_key=True, index=True)
     slug = Column(Text, unique=True, nullable=False, index=True)
     title = Column(Text, nullable=False)
     description = Column(Text, nullable=True)
+    category = Column(Text, nullable=False, default="scandal")  # "scandal" | "crisis" | "megaproject" | "faction" | "procurement"
     status = Column(Text, nullable=False, default="DRAFT")
     cover_entity_id = Column(Integer, ForeignKey("entities.id"), nullable=True)
+    # Санхүүгийн дүн ба Засгийн газрын хамаарал
+    amount_billion = Column(Float, nullable=True)  # Тэрбум төгрөгөөр (MNT billion)
+    currency = Column(Text, nullable=False, default="MNT")  # MNT | USD
+    case_year = Column(Integer, nullable=True)  # Хэрэг үйлдэгдсэн гол он
+    cabinet_id = Column(Integer, ForeignKey("entities.id"), nullable=True)  # Холбогдох Засгийн газрын субъект ID
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
-    cover_entity = relationship("Entity")
+    cover_entity = relationship("Entity", foreign_keys=[cover_entity_id])
+    cabinet = relationship("Entity", foreign_keys=[cabinet_id])
     links = relationship("CaseLink", back_populates="case", cascade="all, delete-orphan")
 
     @property
@@ -382,4 +390,24 @@ class CaseLink(Base):
         UniqueConstraint("case_id", "entity_id", name="uq_case_entity"),
         UniqueConstraint("case_id", "fact_id", name="uq_case_fact"),
     )
+
+
+class UserSession(Base):
+    """Хэрэглэгчийн нэвтрэлтийн сесс — хугацаа сунгах, шууд таслах (terminate) удирдлагатай."""
+    __tablename__ = "user_sessions"
+
+    STATUSES = ("active", "terminated", "expired")
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_token = Column(Text, unique=True, nullable=False, index=True)
+    code_type = Column(Text, nullable=False, default="time_code")  # "time_code" | "master"
+    code_value = Column(Text, nullable=True)
+    client_label = Column(Text, nullable=True)
+    ip_address = Column(Text, nullable=True)
+    user_agent = Column(Text, nullable=True)
+    status = Column(Text, nullable=False, default="active")  # "active" | "terminated" | "expired"
+    created_at = Column(DateTime, default=func.now())
+    last_active_at = Column(DateTime, default=func.now())
+    expires_at = Column(DateTime, nullable=False)
+
 

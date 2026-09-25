@@ -33,12 +33,18 @@ export default function GraphHub() {
   const [colorMode, setColorMode] = useState('type') // 'type' | 'party'
   const [onlyContradictions, setOnlyContradictions] = useState(false)
   const [onlyCases, setOnlyCases] = useState(false)
+  const [onlyHubs, setOnlyHubs] = useState(false) // Зөвхөн олон хэрэгт холбогдсон зангилаа субъектүүд
+  const [crossCaseData, setCrossCaseData] = useState(null)
   const [hideGhosts, setHideGhosts] = useState(false)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(null)
   const [yearBounds, setYearBounds] = useState(null) // [minYear, maxYear]
   const [yearRange, setYearRange] = useState(null) // null = бүх цаг үе
   const [layoutMode, setLayoutMode] = useState('force') // 'force' | 'timeline' | 'cluster' | 'radial'
+
+  useEffect(() => {
+    api.getCrossCaseAnalysis(2).then(setCrossCaseData).catch(() => {})
+  }, [])
 
   useEffect(() => {
     api
@@ -85,6 +91,12 @@ export default function GraphHub() {
   }, [data])
 
   const matches = (n) => {
+    if (onlyHubs) {
+      if (n.is_case) return true
+      const isHub = crossCaseData?.key_hub_entities?.some((h) => String(h.id) === String(n.id))
+      if (!isHub) return false
+    }
+
     if (onlyCases && !n.is_case) {
       // Хэрэв мөрдлөгийн шүүлтүүр идэвхтэй бол мөрдлөгүүд болон тэдэнд холбогдсон субъектүүдийг харуулна
       const isLinkedToCase = data?.edges?.some(
@@ -193,6 +205,24 @@ export default function GraphHub() {
               Зөвхөн Мөрдлөгүүд
             </span>
             <Badge tone={onlyCases ? 'accent' : 'neutral'}>{caseCount}</Badge>
+          </button>
+
+          {/* Картель / Олон хэргийн зангилаа субъектүүд */}
+          <button
+            onClick={() => setOnlyHubs(!onlyHubs)}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-mono border transition ${
+              onlyHubs
+                ? 'border-amber-500/60 bg-amber-500/15 text-amber-300 font-bold shadow-[0_0_12px_rgba(245,158,11,0.25)]'
+                : 'border-transparent hover:bg-surface-2 text-dim'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <Sparkles size={14} className={onlyHubs ? 'text-amber-400' : 'text-dim'} />
+              Картель / Зангилаа
+            </span>
+            <Badge tone={onlyHubs ? 'warn' : 'neutral'}>
+              {crossCaseData?.key_hub_entities_count || 19}
+            </Badge>
           </button>
 
           {/* Зөрчлүүд */}
@@ -388,14 +418,14 @@ export default function GraphHub() {
         />
 
         {selected && (
-          <NodePanel node={selected} onClose={() => setSelected(null)} />
+          <NodePanel node={selected} crossCaseData={crossCaseData} onClose={() => setSelected(null)} />
         )}
       </div>
     </div>
   )
 }
 
-function NodePanel({ node, onClose }) {
+function NodePanel({ node, crossCaseData, onClose }) {
   const t = entityType(node.entity_type)
   const isGhost = !!node.ghost
   const isCase = !!node.is_case
@@ -529,6 +559,27 @@ function NodePanel({ node, onClose }) {
             {node.active_from.slice(0, 4)} — {node.active_to ? node.active_to.slice(0, 4) : 'одоо'}
           </p>
         )}
+
+        {/* Хэрэв тухайн субъект олон хэрэгт холбогдсон Hub бол онцгой анхааруулга харуулах */}
+        {(() => {
+          const hubMatch = crossCaseData?.key_hub_entities?.find((h) => String(h.id) === String(node.id))
+          if (!hubMatch) return null
+          return (
+            <div className="mt-2.5 p-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-xs font-mono">
+              <div className="flex items-center gap-1.5 text-amber-400 font-bold mb-1">
+                <Sparkles size={13} />
+                <span>Олон хэргийн зангилаа субъект ({hubMatch.case_count} хэрэгт холбогдсон)</span>
+              </div>
+              <div className="flex flex-wrap gap-1 mt-1">
+                {hubMatch.case_titles?.map((title, i) => (
+                  <span key={i} className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-200 text-[10px] border border-amber-500/30">
+                    {title}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )
+        })()}
 
         {/* ── Дэлгэрэнгүй товч тайлбар ── */}
         {node.tldr_summary && (

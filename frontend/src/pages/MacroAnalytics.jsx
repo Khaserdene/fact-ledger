@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import {
   TrendingUp,
   BarChart3,
@@ -252,6 +253,7 @@ export default function MacroAnalytics() {
   const [selectedPair, setSelectedPair] = useState(null)
   const [pppBaseYear, setPppBaseYear] = useState(2000)
   const [pppAmount, setPppAmount] = useState(1000000)
+  const [cabinetSort, setCabinetSort] = useState('scandal_pct') // 'scandal_pct' | 'total_scandal' | 'chronological'
 
   const svgRef = useRef(null)
 
@@ -743,51 +745,49 @@ export default function MacroAnalytics() {
   }, [data, searchTable])
 
   return (
-    <div className="space-y-6 animate-fadeIn max-w-[1440px] mx-auto pb-20">
+    <div className="space-y-4 md:space-y-6 animate-fadeIn max-w-[1440px] mx-auto pb-24 md:pb-20">
       {/* ── Титэм гарчиг ────────────────────────────────────────────────────── */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-line pb-5">
-        <div>
-          <div className="flex items-center gap-2 text-xs font-mono text-accent uppercase tracking-widest mb-1.5">
-            <TrendingUp size={15} />
-            <span>Time-Series Macro Analytics & Quantitative Ledger</span>
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 border-b border-line pb-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-[11px] font-mono text-accent uppercase tracking-widest mb-1">
+            <TrendingUp size={13} />
+            <span className="hidden sm:inline">Time-Series Macro Analytics</span>
+            <span className="sm:hidden">Макро Аналитик</span>
           </div>
-          <h1 className="text-2xl md:text-3xl font-display font-bold text-text tracking-tight flex items-center gap-3">
+          <h1 className="text-xl md:text-2xl font-display font-bold text-text tracking-tight flex flex-wrap items-center gap-2">
             <span>Монгол Улсын Макро Динамик</span>
-            <span className="text-xs px-2.5 py-0.5 rounded-full font-mono font-normal bg-accent-dim text-accent border border-accent-line">
-              {startYear}–{endYear} он
+            <span className="text-xs px-2 py-0.5 rounded-full font-mono font-normal bg-accent-dim text-accent border border-accent-line">
+              {startYear}–{endYear}
             </span>
           </h1>
-          <p className="text-dim text-sm mt-1 max-w-2xl">
-            Төсөв, валютын ханш, орон сууц, махны үнэ, алт, биткойн болон инфляцийн 35 жилийн нэгдсэн архив, аналитик шинжилгээ.
+          <p className="text-dim text-xs mt-1 hidden sm:block max-w-2xl">
+            Төсөв, валютын ханш, орон сууц, мах, алт, инфляцийн 35 жилийн архив ба аналитик.
           </p>
         </div>
 
         {/* Экспорт & Сэргээх товчнууд */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2 shrink-0">
           <button
-            onClick={() => {
-              fetchSeries()
-              fetchAnalytics()
-            }}
+            onClick={() => { fetchSeries(); fetchAnalytics() }}
             disabled={loading}
-            className="px-3 py-2 rounded-lg text-xs font-mono bg-surface-2 hover:bg-surface-3 text-text border border-line flex items-center gap-1.5 transition-all"
+            className="px-2.5 py-1.5 rounded-lg text-xs font-mono bg-surface-2 hover:bg-surface-3 text-text border border-line flex items-center gap-1.5 transition-all"
             title="Дахин шинэчлэх"
           >
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-            <span>Шинэчлэх</span>
+            <span className="hidden sm:inline">Шинэчлэх</span>
           </button>
           <button
             onClick={exportCSV}
-            className="px-3.5 py-2 rounded-lg text-xs font-mono bg-accent-dim hover:bg-accent-line text-accent border border-accent-line flex items-center gap-1.5 transition-all shadow-[0_0_12px_rgb(56_224_255/0.1)]"
+            className="px-2.5 py-1.5 rounded-lg text-xs font-mono bg-accent-dim hover:bg-accent-line text-accent border border-accent-line flex items-center gap-1.5 transition-all"
           >
-            <Download size={14} />
-            <span>CSV Татах</span>
+            <Download size={13} />
+            <span>CSV</span>
           </button>
         </div>
       </div>
 
       {/* ── Статистик хураангуй картууд (Top 5 Гол үзүүлэлт) ─────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 md:gap-3">
         {/* 1. Төсвийн зарлага */}
         <div
           onClick={() => toggleCode('budget_expenditure')}
@@ -925,9 +925,9 @@ export default function MacroAnalytics() {
       </div>
 
       {/* ── Удирдлагын хэсэг: Пресетүүд, Чартын горим, Хугацааны сонгогч ──────── */}
-      <div className="glass p-4 rounded-xl border border-line space-y-4">
+      <div className="glass p-3 md:p-4 rounded-xl border border-line space-y-3">
         {/* Мөр 1: Шуурхай сэдэвчилсэн багцууд (Preset Baskets) */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-line/50 pb-3">
+        <div className="flex flex-wrap items-center gap-2 border-b border-line/50 pb-3">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-xs font-mono text-dim mr-1 flex items-center gap-1">
               <Sparkles size={13} className="text-accent" />
@@ -955,9 +955,8 @@ export default function MacroAnalytics() {
             })}
           </div>
 
-          {/* Чартын хэлбэр сонгогч */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-mono text-dim hidden sm:inline">Хэлбэр:</span>
+          {/* Чартын хэлбэр сонгогч — мобайл дээр preset-ийн баруун талд гарна */}
+          <div className="ml-auto flex items-center gap-2">
             <div className="flex items-center bg-surface-2 p-0.5 rounded-lg border border-line text-xs font-mono">
               {[
                 { id: 'combo', label: 'Хосолсон', icon: BarChart3 },
@@ -1012,8 +1011,8 @@ export default function MacroAnalytics() {
         </div>
 
         {/* Мөр 2: Хугацааны нарийвчилсан Range сонгогч */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-line/50 pb-3">
-          <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 border-b border-line/50 pb-3">
+          <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-1.5 bg-surface-2 px-3 py-1 rounded-lg border border-line text-xs font-mono">
               <Calendar size={13} className="text-accent" />
               <span className="text-dim">Эхлэх он:</span>
@@ -1062,12 +1061,12 @@ export default function MacroAnalytics() {
             </div>
 
             {/* Хугацааны шуурхай пресетүүд */}
-            <div className="flex items-center gap-1 text-xs font-mono">
+            <div className="flex flex-wrap items-center gap-1 text-xs font-mono">
               {[
                 { id: 'all', label: 'Бүх үе (1990–2026)' },
-                { id: 'post2000', label: '2000 оноос хойш' },
-                { id: 'last10', label: 'Сүүлийн 10 жил' },
-                { id: 'transition', label: 'Шилжилт (1990–2000)' },
+                { id: 'post2000', label: '2000+' },
+                { id: 'last10', label: 'Сүүлийн 10' },
+                { id: 'transition', label: '1990–2000' },
               ].map((p) => (
                 <button
                   key={p.id}
@@ -1184,11 +1183,11 @@ export default function MacroAnalytics() {
         </div>
 
         {/* Үндсэн SVG График */}
-        <div className="w-full overflow-x-auto relative">
+        <div className="w-full overflow-x-auto -mx-2 px-2 relative">
           <svg
             ref={svgRef}
             viewBox={`0 0 ${chartLayout?.width || 1060} ${chartLayout?.height || 440}`}
-            className="w-full h-auto min-w-[780px] select-none cursor-crosshair"
+            className="w-full h-auto min-w-[600px] md:min-w-[780px] select-none cursor-crosshair touch-pan-y"
             onMouseMove={(e) => {
               if (!chartLayout || !svgRef.current) return
               const rect = svgRef.current.getBoundingClientRect()
@@ -1672,30 +1671,33 @@ export default function MacroAnalytics() {
           </div>
 
           {/* 4 Лабораторийн таб сонгогч */}
-          <div className="flex flex-wrap items-center bg-surface-2 p-1 rounded-xl border border-line text-xs font-mono">
-            {[
-              { id: 'correlation', label: 'Корреляцийн матриц', icon: Flame },
-              { id: 'ppp', label: 'Худалдан авах чадвар', icon: Scale },
-              { id: 'cagr', label: 'CAGR ба Эрсдэл', icon: Award },
-              { id: 'cabinet', label: 'Засгийн газруудын дүн', icon: History },
-            ].map((tab) => {
-              const Icon = tab.icon
-              const active = activeLabTab === tab.id
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveLabTab(tab.id)}
-                  className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all ${
-                    active
-                      ? 'bg-accent-dim text-accent border border-accent-line font-bold shadow-sm'
-                      : 'text-dim hover:text-text'
-                  }`}
-                >
-                  <Icon size={14} />
-                  <span>{tab.label}</span>
-                </button>
-              )
-            })}
+          <div className="-mx-1 overflow-x-auto pb-0.5">
+            <div className="flex items-center bg-surface-2 p-1 rounded-xl border border-line text-xs font-mono min-w-max">
+              {[
+                { id: 'correlation', label: 'Корреляц', mobileLabel: 'Коррел', icon: Flame },
+                { id: 'ppp', label: 'Худалдан авах чадвар', mobileLabel: 'Хач', icon: Scale },
+                { id: 'cagr', label: 'CAGR ба Эрсдэл', mobileLabel: 'CAGR', icon: Award },
+                { id: 'cabinet', label: 'Засгийн газруудын дүн', mobileLabel: 'ЗГ Дүн', icon: History },
+              ].map((tab) => {
+                const Icon = tab.icon
+                const active = activeLabTab === tab.id
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveLabTab(tab.id)}
+                    className={`px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 transition-all whitespace-nowrap ${
+                      active
+                        ? 'bg-accent-dim text-accent border border-accent-line font-bold shadow-sm'
+                        : 'text-dim hover:text-text'
+                    }`}
+                  >
+                    <Icon size={13} />
+                    <span className="hidden sm:inline">{tab.label}</span>
+                    <span className="sm:hidden">{tab.mobileLabel}</span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
         </div>
 
@@ -2210,62 +2212,210 @@ export default function MacroAnalytics() {
           </div>
         )}
 
-        {/* ── ТАБ 4: ЗАСГИЙН ГАЗРУУДЫН ҮЕИЙН ДҮН (Cabinet Impact Scorecard) ── */}
+        {/* ── ТАБ 4: ЗАСГИЙН ГАЗРУУДЫН ҮЕИЙН ДҮН БА ХУЛГАЙН ХАРЬЦАА (Cabinet Impact & Theft Scorecard) ── */}
         {activeLabTab === 'cabinet' && (
           <div className="space-y-4 animate-fadeIn">
-            <div className="text-xs font-mono text-dim pb-1">
-              Үе үеийн Засгийн газар, танхимуудын бүрэн эрхийн хугацаанд гарсан гол макро үзүүлэлтүүдийн өөрчлөлт
+            {/* Тайлбар ба Эрэмбэлэлтийн контрол */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-surface-2 p-3.5 rounded-xl border border-line">
+              <div>
+                <div className="text-sm font-display font-bold text-text flex items-center gap-2">
+                  <span>🏛️ Үе үеийн Засгийн газруудын хулгай ба Макро өөрчлөлт</span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                    Theft-to-Budget Ratio
+                  </span>
+                </div>
+                <div className="text-xs font-mono text-dim mt-0.5">
+                  Тухайн танхимын бүрэн эрхийн үеийн дуулиант хэргүүдийн мөнгөн дүн болон жилийн дундаж төсөвт эзлэх хувь
+                </div>
+              </div>
+
+              {/* Эрэмбэлэх товчнууд */}
+              <div className="flex items-center gap-1.5 text-xs font-mono bg-surface-1 p-1 rounded-lg border border-line shrink-0">
+                <span className="text-dim px-2 text-[11px]">Эрэмбэлэх:</span>
+                <button
+                  onClick={() => setCabinetSort('scandal_pct')}
+                  className={`px-2.5 py-1 rounded transition ${
+                    cabinetSort === 'scandal_pct'
+                      ? 'bg-rose-500/25 text-rose-300 font-bold border border-rose-500/40'
+                      : 'text-dim hover:text-text'
+                  }`}
+                >
+                  Хулгай / Төсөв %
+                </button>
+                <button
+                  onClick={() => setCabinetSort('total_scandal')}
+                  className={`px-2.5 py-1 rounded transition ${
+                    cabinetSort === 'total_scandal'
+                      ? 'bg-amber-500/25 text-amber-300 font-bold border border-amber-500/40'
+                      : 'text-dim hover:text-text'
+                  }`}
+                >
+                  Нийт дүн (₮)
+                </button>
+                <button
+                  onClick={() => setCabinetSort('chronological')}
+                  className={`px-2.5 py-1 rounded transition ${
+                    cabinetSort === 'chronological'
+                      ? 'bg-accent/25 text-accent font-bold border border-accent/40'
+                      : 'text-dim hover:text-text'
+                  }`}
+                >
+                  Он дарааллаар
+                </button>
+              </div>
             </div>
 
+            {/* Засгийн газруудын картууд */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-              {analyticsData?.cabinet_scorecard?.map((cab) => (
-                <div
-                  key={cab.id}
-                  className="glass p-4 rounded-xl border border-line hover:border-line-strong transition-all space-y-3"
-                >
-                  <div className="flex items-start justify-between gap-2 border-b border-line/40 pb-2.5">
-                    <div>
-                      <div className="text-sm font-display font-bold text-text">
-                        {cab.name}
-                      </div>
-                      <div className="text-xs text-accent font-mono mt-0.5">
-                        {cab.pm}
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-surface-3 text-dim shrink-0">
-                      {cab.start_year}–{cab.end_year} ({cab.duration_months} сар)
-                    </span>
-                  </div>
+              {(() => {
+                const list = [...(analyticsData?.cabinet_scorecard || [])]
+                if (cabinetSort === 'scandal_pct') {
+                  list.sort((a, b) => (b.scandal_to_budget_pct || 0) - (a.scandal_to_budget_pct || 0))
+                } else if (cabinetSort === 'total_scandal') {
+                  list.sort((a, b) => (b.total_scandal_billion || 0) - (a.total_scandal_billion || 0))
+                }
+                return list
+              })().map((cab, idx) => {
+                const ratio = cab.scandal_to_budget_pct || 0
+                const isExtreme = ratio >= 50
+                const isHigh = ratio >= 15 && ratio < 50
+                const isModerate = ratio > 0 && ratio < 15
 
-                  {/* Гол тоон өсөлтүүд */}
-                  <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                    <div className="p-2 rounded bg-surface-2 border border-line/40">
-                      <div className="text-[10px] text-dim">🏛️ Төсвийн зарлага:</div>
-                      <div className={`font-bold ${cab.budget_growth_pct > 0 ? 'text-warn' : 'text-ok'}`}>
-                        {cab.budget_growth_pct !== null ? `+${cab.budget_growth_pct}%` : '—'}
+                return (
+                  <div
+                    key={cab.id}
+                    className={`glass p-4 rounded-xl border transition-all space-y-3 ${
+                      isExtreme
+                        ? 'border-rose-500/50 bg-rose-950/10 shadow-[0_4px_20px_rgba(244,63,94,0.08)]'
+                        : isHigh
+                        ? 'border-amber-500/40 bg-amber-950/10'
+                        : 'border-line hover:border-line-strong'
+                    }`}
+                  >
+                    {/* Header */}
+                    <div className="flex items-start justify-between gap-2 border-b border-line/40 pb-2.5">
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-mono text-dim">#{idx + 1}</span>
+                          <div className="text-sm font-display font-bold text-text">
+                            {cab.name}
+                          </div>
+                        </div>
+                        <div className="text-xs text-accent font-mono mt-0.5">
+                          {cab.pm} {cab.party ? `(${cab.party})` : ''}
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-surface-3 text-dim shrink-0">
+                        {cab.start_year}–{cab.end_year} ({cab.duration_months} сар)
+                      </span>
+                    </div>
+
+                    {/* Төсвийн хулгайн харьцаа (Theft-to-Budget Ratio) Hero Box */}
+                    <div className="p-3 rounded-lg bg-surface-2/90 border border-line/60 space-y-2">
+                      <div className="flex items-center justify-between text-xs font-mono">
+                        <span className="text-dim flex items-center gap-1">
+                          🚨 Төсөвт эзлэх хулгай:
+                        </span>
+                        <span
+                          className={`text-sm font-bold ${
+                            isExtreme
+                              ? 'text-rose-400'
+                              : isHigh
+                              ? 'text-amber-400'
+                              : isModerate
+                              ? 'text-yellow-300'
+                              : 'text-dim'
+                          }`}
+                        >
+                          {ratio > 0 ? `${ratio}%` : '0%'}
+                        </span>
+                      </div>
+
+                      {/* Visual Meter Bar */}
+                      <div className="w-full bg-surface-3 h-2 rounded-full overflow-hidden border border-line/30">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            isExtreme
+                              ? 'bg-gradient-to-r from-rose-500 to-red-600'
+                              : isHigh
+                              ? 'bg-gradient-to-r from-amber-500 to-rose-500'
+                              : isModerate
+                              ? 'bg-gradient-to-r from-yellow-500 to-amber-500'
+                              : 'bg-dim/30'
+                          }`}
+                          style={{ width: `${Math.min(100, Math.max(ratio > 0 ? 4 : 0, ratio))}%` }}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] font-mono pt-0.5">
+                        <span className="text-dim">
+                          Хэрэг: <strong className="text-text">{cab.scandals_count || 0}</strong>
+                        </span>
+                        <span className="text-text font-bold">
+                          {cab.total_scandal_billion >= 1000
+                            ? `${(cab.total_scandal_billion / 1000).toFixed(2)} Их наяд ₮`
+                            : `${cab.total_scandal_billion || 0} Тэрбум ₮`}
+                        </span>
                       </div>
                     </div>
-                    <div className="p-2 rounded bg-surface-2 border border-line/40">
-                      <div className="text-[10px] text-dim">💵 USD ханш:</div>
-                      <div className={`font-bold ${cab.usd_growth_pct > 0 ? 'text-danger' : 'text-ok'}`}>
-                        {cab.usd_growth_pct !== null ? `+${cab.usd_growth_pct}%` : '—'}
+
+                    {/* Гол дуулиант хэргүүд (Top Scandals) */}
+                    {cab.top_scandals && cab.top_scandals.length > 0 && (
+                      <div className="space-y-1 pt-1 border-t border-line/30">
+                        <span className="text-[10px] font-mono text-dim block">
+                          Гол хэргүүд:
+                        </span>
+                        <div className="flex flex-col gap-1">
+                          {cab.top_scandals.map((sc, sIdx) => (
+                            <Link
+                              key={sIdx}
+                              to={`/cases/${sc.slug}`}
+                              className="text-[11px] font-mono text-dim hover:text-accent flex items-center justify-between gap-2 p-1 rounded hover:bg-surface-2 transition group"
+                            >
+                              <span className="truncate group-hover:underline">
+                                • {sc.title}
+                              </span>
+                              <span className="shrink-0 text-[10px] font-bold text-rose-400/90">
+                                {sc.amount_billion >= 1000
+                                  ? `${(sc.amount_billion / 1000).toFixed(1)} Их наяд ₮`
+                                  : `${sc.amount_billion} Тэрбум ₮`}
+                              </span>
+                            </Link>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                    <div className="p-2 rounded bg-surface-2 border border-line/40">
-                      <div className="text-[10px] text-dim">🥩 Махны үнэ:</div>
-                      <div className={`font-bold ${cab.meat_growth_pct > 0 ? 'text-danger' : 'text-ok'}`}>
-                        {cab.meat_growth_pct !== null ? `+${cab.meat_growth_pct}%` : '—'}
+                    )}
+
+                    {/* Гол макро тоон өсөлтүүд */}
+                    <div className="grid grid-cols-2 gap-2 text-xs font-mono pt-1">
+                      <div className="p-2 rounded bg-surface-2 border border-line/40">
+                        <div className="text-[10px] text-dim">🏛️ Төсвийн тэлэлт:</div>
+                        <div className={`font-bold ${cab.budget_growth_pct > 0 ? 'text-warn' : 'text-ok'}`}>
+                          {cab.budget_growth_pct !== null ? `+${cab.budget_growth_pct}%` : '—'}
+                        </div>
                       </div>
-                    </div>
-                    <div className="p-2 rounded bg-surface-2 border border-line/40">
-                      <div className="text-[10px] text-dim">📊 Дундаж инфляц:</div>
-                      <div className="font-bold text-pink-400">
-                        {cab.avg_inflation_pct !== null ? `${cab.avg_inflation_pct}%` : '—'}
+                      <div className="p-2 rounded bg-surface-2 border border-line/40">
+                        <div className="text-[10px] text-dim">💵 USD ханш:</div>
+                        <div className={`font-bold ${cab.usd_growth_pct > 0 ? 'text-danger' : 'text-ok'}`}>
+                          {cab.usd_growth_pct !== null ? `+${cab.usd_growth_pct}%` : '—'}
+                        </div>
+                      </div>
+                      <div className="p-2 rounded bg-surface-2 border border-line/40">
+                        <div className="text-[10px] text-dim">🥩 Махны үнэ:</div>
+                        <div className={`font-bold ${cab.meat_growth_pct > 0 ? 'text-danger' : 'text-ok'}`}>
+                          {cab.meat_growth_pct !== null ? `+${cab.meat_growth_pct}%` : '—'}
+                        </div>
+                      </div>
+                      <div className="p-2 rounded bg-surface-2 border border-line/40">
+                        <div className="text-[10px] text-dim">📊 Дундаж инфляц:</div>
+                        <div className="font-bold text-pink-400">
+                          {cab.avg_inflation_pct !== null ? `${cab.avg_inflation_pct}%` : '—'}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}

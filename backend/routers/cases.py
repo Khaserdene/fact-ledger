@@ -17,6 +17,7 @@ router = APIRouter(prefix="/cases", tags=["cases"])
 @router.get("", response_model=List[schemas.CaseOut])
 def list_cases(
     status: Optional[str] = None,
+    category: Optional[str] = None,
     search: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
@@ -24,6 +25,8 @@ def list_cases(
     q = db.query(models.Case).options(joinedload(models.Case.links))
     if status:
         q = q.filter(models.Case.status == status)
+    if category:
+        q = q.filter(models.Case.category == category)
     if search:
         s = f"%{search.strip()}%"
         q = q.filter(
@@ -52,8 +55,13 @@ def create_case(payload: schemas.CaseCreate, db: Session = Depends(get_db)):
         slug=payload.slug,
         title=payload.title,
         description=payload.description,
+        category=payload.category or "scandal",
         status=payload.status,
         cover_entity_id=payload.cover_entity_id,
+        amount_billion=payload.amount_billion,
+        currency=payload.currency or "MNT",
+        case_year=payload.case_year,
+        cabinet_id=payload.cabinet_id,
     )
     db.add(case)
     db.commit()
@@ -218,8 +226,13 @@ def get_case_subgraph(slug: str, db: Session = Depends(get_db)) -> Dict[str, Any
             "slug": case.slug,
             "title": case.title,
             "description": case.description,
+            "category": case.category or "scandal",
             "status": case.status,
             "cover_entity_id": case.cover_entity_id,
+            "amount_billion": case.amount_billion,
+            "currency": case.currency,
+            "case_year": case.case_year,
+            "cabinet_id": case.cabinet_id,
             "created_at": str(case.created_at),
             "updated_at": str(case.updated_at),
         },
@@ -246,12 +259,22 @@ def update_case(slug: str, payload: schemas.CaseUpdate, db: Session = Depends(ge
         case.title = payload.title
     if payload.description is not None:
         case.description = payload.description
+    if payload.category is not None:
+        case.category = payload.category
     if payload.status is not None:
         if payload.status not in models.Case.STATUSES:
             raise HTTPException(status_code=400, detail=f"Буруу status: {payload.status}")
         case.status = payload.status
     if payload.cover_entity_id is not None:
         case.cover_entity_id = payload.cover_entity_id
+    if payload.amount_billion is not None:
+        case.amount_billion = payload.amount_billion
+    if payload.currency is not None:
+        case.currency = payload.currency
+    if payload.case_year is not None:
+        case.case_year = payload.case_year
+    if payload.cabinet_id is not None:
+        case.cabinet_id = payload.cabinet_id
     db.commit()
     db.refresh(case)
     return case
@@ -465,4 +488,198 @@ def get_entity_activity(
         "relationships": relationships,
         "total_facts": len(timeline),
         "case_linked_facts": len([t for t in timeline if t.get("in_case")]),
+    }
+
+
+# ── Сүлжээний огтлолцол ба Бүлэглэл илрүүлэлт ──────────────────────────────
+
+@router.get("/network/cross-case-analysis")
+def get_cross_case_network_analysis(
+    min_cases: int = 2,
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Олон хэрэг дамнан холбогдсон зангилаа субъектүүд болон картель/бүлэглэлийн огтлолцлыг шинжлэх."""
+    # 1. Олон хэрэгт нэр холбогдсон субъектүүд
+    entity_cases = (
+        db.query(
+            models.Entity.id,
+            models.Entity.name,
+            models.Entity.entity_type,
+            func.count(func.distinct(models.CaseLink.case_id)).label("case_count"),
+            func.group_concat(func.distinct(models.Case.title)).label("case_titles"),
+            func.group_concat(func.distinct(models.Case.slug)).label("case_slugs"),
+        )
+        .join(models.CaseLink, models.CaseLink.entity_id == models.Entity.id)
+        .join(models.Case, models.CaseLink.case_id == models.Case.id)
+        .group_by(models.Entity.id, models.Entity.name, models.Entity.entity_type)
+        .having(func.count(func.distinct(models.CaseLink.case_id)) >= min_cases)
+        .order_by(func.count(func.distinct(models.CaseLink.case_id)).desc())
+        .all()
+    )
+
+    top_entities = [
+        {
+            "id": r[0],
+            "name": r[1],
+            "entity_type": r[2],
+            "case_count": r[3],
+            "case_titles": r[4].split(",") if r[4] else [],
+            "case_slugs": r[5].split(",") if r[5] else [],
+        }
+        for r in entity_cases
+    ]
+
+    # 2. Хамтын оролцоотой хосууд (Pairwise Co-occurrence)
+    cl1 = models.CaseLink
+    cl2 = models.CaseLink
+    co_occurrences = (
+        db.query(
+            models.CaseLink.entity_id.label("e1_id"),
+            models.Entity.name.label("e1_name"),
+            models.CaseLink.case_id,
+        )
+        .join(models.Entity, models.CaseLink.entity_id == models.Entity.id)
+        .filter(models.CaseLink.entity_id.isnot(None))
+        .all()
+    )
+
+    # Calculate shared cases between entity pairs
+    entity_to_cases = {}
+    entity_names = {}
+    for row in co_occurrences:
+        entity_to_cases.setdefault(row.e1_id, set()).add(row.case_id)
+        entity_names[row.e1_id] = row.e1_name
+
+    cases_dict = {c.id: c.title for c in db.query(models.Case).all()}
+
+    shared_pairs = []
+    e_ids = list(entity_to_cases.keys())
+    for i in range(len(e_ids)):
+        for j in range(i + 1, len(e_ids)):
+            id1, id2 = e_ids[i], e_ids[j]
+            shared = entity_to_cases[id1].intersection(entity_to_cases[id2])
+            if len(shared) >= min_cases:
+                shared_pairs.append({
+                    "entity_1": {"id": id1, "name": entity_names[id1]},
+                    "entity_2": {"id": id2, "name": entity_names[id2]},
+                    "shared_count": len(shared),
+                    "cases": [cases_dict.get(cid, str(cid)) for cid in shared],
+                })
+
+    shared_pairs.sort(key=lambda x: x["shared_count"], reverse=True)
+
+    # 3. Улс төрч/Компани ↔ 29 Хэрэг бүрийн бүрэн матриц (Heatmap Matrix)
+    all_cases = db.query(models.Case).order_by(models.Case.id.asc()).all()
+    all_links = (
+        db.query(models.CaseLink)
+        .options(joinedload(models.CaseLink.entity))
+        .filter(models.CaseLink.entity_id.isnot(None))
+        .all()
+    )
+
+    # entity_id -> {case_id -> role}
+    entity_case_roles = {}
+    for l in all_links:
+        if l.entity_id:
+            entity_case_roles.setdefault(l.entity_id, {})[l.case_id] = {
+                "role": l.role,
+                "note": l.note,
+            }
+
+    # Матрицад харуулах гол субъектүүд (дор хаяж 1 хэрэгт холбогдсон)
+    # Эрэмбэлэлт: хамгийн олон хэрэгт холбогдсоноор нь
+    matrix_entities = []
+    for ent_id, c_dict in sorted(entity_case_roles.items(), key=lambda x: len(x[1]), reverse=True):
+        ent = entities.get(ent_id) if 'entities' in locals() else db.query(models.Entity).filter(models.Entity.id == ent_id).first()
+        if not ent:
+            continue
+        matrix_entities.append({
+            "id": ent.id,
+            "name": ent.name,
+            "entity_type": ent.entity_type,
+            "case_count": len(c_dict),
+            "cases": {
+                str(cid): c_dict[cid] for cid in c_dict
+            }
+        })
+
+    cases_summary = [
+        {
+            "id": c.id,
+            "slug": c.slug,
+            "title": c.title,
+            "category": c.category,
+            "status": c.status,
+            "amount_billion": c.amount_billion,
+            "currency": c.currency,
+            "case_year": c.case_year,
+            "cabinet_id": c.cabinet_id,
+            "links_count": len(c.links)
+        }
+        for c in all_cases
+    ]
+
+    # 4. Худалдан авалт, Оффтейк, Картель / Сэжигтэй түншлэлийн шинжилгээ (Procurement Cartels)
+    # Зээл, тендер, гэрээ, оффтейк, хамаарал бүхий компани, удирдлагуудын зангилаа
+    procurement_cartels = []
+    company_rels = (
+        db.query(models.Relationship)
+        .options(
+            joinedload(models.Relationship.source_entity),
+            joinedload(models.Relationship.target_entity),
+        )
+        .all()
+    )
+
+    for r in company_rels:
+        s_ent = r.source_entity
+        t_ent = r.target_entity
+        if not s_ent or not t_ent:
+            continue
+        # Компани эсвэл сан, төрийн байгууллага, гүйцэтгэх удирдлагын холбоос
+        s_type = s_ent.entity_type
+        t_type = t_ent.entity_type
+        is_corporate_nexus = (
+            s_type in ("company", "fund", "org") or 
+            t_type in ("company", "fund", "org") or
+            any(k in r.rel_type.lower() for k in ["гүйцэтгэх", "захирал", "хувьцаа", "зээлдэгч", "оффтейк", "түнш", "эзэмшигч", "хамаарал"])
+        )
+        if not is_corporate_nexus:
+            continue
+
+        # Холбогдсон хэргүүд
+        s_cases = set(entity_to_cases.get(s_ent.id, []))
+        t_cases = set(entity_to_cases.get(t_ent.id, []))
+        shared = s_cases.intersection(t_cases)
+
+        # Эрсдэлийн оноо (Risk Score)
+        risk_score = 40
+        if shared:
+            risk_score += len(shared) * 25
+        if any(w in r.rel_type.lower() for k in ["оффтейк", "чанаргүй", "зээл", "хамаарал"] for w in [k]):
+            risk_score += 20
+
+        risk_score = min(98, risk_score)
+
+        procurement_cartels.append({
+            "id": r.id,
+            "source_entity": {"id": s_ent.id, "name": s_ent.name, "type": s_ent.entity_type},
+            "target_entity": {"id": t_ent.id, "name": t_ent.name, "type": t_ent.entity_type},
+            "rel_type": r.rel_type,
+            "source_quote": r.source_quote,
+            "shared_cases": [cases_dict.get(cid, str(cid)) for cid in shared],
+            "shared_cases_count": len(shared),
+            "risk_score": risk_score,
+        })
+
+    procurement_cartels.sort(key=lambda x: (x["shared_cases_count"], x["risk_score"]), reverse=True)
+
+    return {
+        "min_cases_threshold": min_cases,
+        "key_hub_entities_count": len(top_entities),
+        "key_hub_entities": top_entities,
+        "shared_case_pairs": shared_pairs,
+        "cases_summary": cases_summary,
+        "matrix_entities": matrix_entities[:60], # Топ 60 гол холбогдогчийн матриц
+        "procurement_cartels": procurement_cartels[:40], # Сэжигтэй төсөв/тендер/оффтейк зангилаанууд
     }
