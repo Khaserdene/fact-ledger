@@ -32,7 +32,14 @@ import {
   ArrowRight,
   Sparkles,
   Printer,
-  FileDown
+  FileDown,
+  Quote,
+  Coins,
+  Crown,
+  Scale,
+  DollarSign,
+  ChevronsLeft,
+  ChevronsRight
 } from 'lucide-react'
 import {
   forceCenter,
@@ -83,6 +90,16 @@ export default function CaseEditor() {
   const [timeIndex, setTimeIndex] = useState(null) // null = all time, or index in sortedFacts
   const [isPlaying, setIsPlaying] = useState(false)
   const playTimerRef = useRef(null)
+
+  // Баруун талын Drawer өргөн, хэмжээ, хайлтын төлөв
+  const [drawerWidth, setDrawerWidth] = useState(540)
+  const [isDraggingDrawer, setIsDraggingDrawer] = useState(false)
+  const [isFullscreenDrawer, setIsFullscreenDrawer] = useState(false)
+  const [timelineSearch, setTimelineSearch] = useState('')
+  const [timelineRoleFilter, setTimelineRoleFilter] = useState('ALL')
+  const [timelineEntityFilter, setTimelineEntityFilter] = useState(null)
+  const [timelineYearFilter, setTimelineYearFilter] = useState('ALL')
+  const [groupByYear, setGroupByYear] = useState(true)
 
   // Subgraph nodes & edges layout
   const wrapRef = useRef(null)
@@ -232,6 +249,153 @@ export default function CaseEditor() {
     }
     return null
   }, [activeStage, STAGES, timeIndex])
+
+  // Баруун самбарын өргөн чирж өөрчлөх
+  const handleMouseDownResize = (e) => {
+    e.preventDefault()
+    setIsDraggingDrawer(true)
+    const startX = e.clientX
+    const startW = drawerWidth
+
+    const onMouseMove = (ev) => {
+      const deltaX = startX - ev.clientX
+      const maxW = Math.max(360, Math.min(window.innerWidth - 260, startW + deltaX))
+      setDrawerWidth(maxW)
+    }
+
+    const onMouseUp = () => {
+      setIsDraggingDrawer(false)
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+  }
+
+  // Гол тоглогчид / Оролцооны бүлэглэл (Шийдвэр гаргагчид, Ашиг хүртэгчид, Яллагдагчид)
+  const keyPlayers = useMemo(() => {
+    if (!data?.links || !data?.entities) {
+      return { suspects: [], beneficiaries: [], decisionMakers: [], all: [] }
+    }
+    const entMap = {}
+    for (const e of data.entities) {
+      entMap[e.id] = e
+    }
+
+    const suspects = []
+    const beneficiaries = []
+    const decisionMakers = []
+    const others = []
+
+    for (const l of data.links) {
+      if (!l.entity_id || !entMap[l.entity_id]) continue
+      const item = { ...entMap[l.entity_id], role: l.role, note: l.note, link_id: l.id }
+      if (l.role === 'SUSPECT') suspects.push(item)
+      else if (l.role === 'BENEFICIARY') beneficiaries.push(item)
+      else if (l.role === 'DECISION_MAKER') decisionMakers.push(item)
+      else others.push(item)
+    }
+
+    return { suspects, beneficiaries, decisionMakers, others }
+  }, [data])
+
+  // Боломжит он жилүүд
+  const availableYears = useMemo(() => {
+    const yrs = new Set()
+    for (const f of sortedFacts) {
+      if (f.fact_date) {
+        const y = f.fact_date.slice(0, 4)
+        if (y && !isNaN(parseInt(y, 10))) yrs.add(y)
+      }
+    }
+    return Array.from(yrs).sort()
+  }, [sortedFacts])
+
+  // Шүүлтүүртэй фактууд
+  const filteredTimelineFacts = useMemo(() => {
+    return sortedFacts.filter((f) => {
+      // 1. Cutoff date filter
+      if (activeCutoffDate && f.fact_date && f.fact_date > activeCutoffDate) {
+        return false
+      }
+      if (activeStartDate && f.fact_date && f.fact_date < activeStartDate) {
+        return false
+      }
+
+      // 2. Text search
+      if (timelineSearch.trim()) {
+        const q = timelineSearch.toLowerCase().trim()
+        const textMatch = f.fact_text?.toLowerCase().includes(q)
+        const quoteMatch = f.source_quote?.toLowerCase().includes(q)
+        const topicMatch = f.topic?.toLowerCase().includes(q)
+        const entMatch = f.entity_name?.toLowerCase().includes(q)
+        const sourceMatch = f.source_title?.toLowerCase().includes(q)
+        const roleMatch = f.role_context?.toLowerCase().includes(q)
+        if (!textMatch && !quoteMatch && !topicMatch && !entMatch && !sourceMatch && !roleMatch) {
+          return false
+        }
+      }
+
+      // 3. Year filter
+      if (timelineYearFilter !== 'ALL') {
+        if (!f.fact_date || !f.fact_date.startsWith(timelineYearFilter)) return false
+      }
+
+      // 4. Entity filter
+      if (timelineEntityFilter !== null) {
+        if (f.entity_id !== timelineEntityFilter) return false
+      }
+
+      // 5. Role filter
+      if (timelineRoleFilter !== 'ALL') {
+        const matchingLink = data?.links?.find((l) => l.entity_id === f.entity_id)
+        if (!matchingLink || matchingLink.role !== timelineRoleFilter) return false
+      }
+
+      return true
+    })
+  }, [
+    sortedFacts,
+    activeCutoffDate,
+    activeStartDate,
+    timelineSearch,
+    timelineYearFilter,
+    timelineEntityFilter,
+    timelineRoleFilter,
+    data,
+  ])
+
+  // Жилээр бүлэглэх
+  const factsGroupedByYear = useMemo(() => {
+    const groups = {}
+    for (const f of filteredTimelineFacts) {
+      const yr = f.fact_date ? f.fact_date.slice(0, 4) : 'Он тодорхойгүй'
+      if (!groups[yr]) groups[yr] = []
+      groups[yr].push(f)
+    }
+    return Object.entries(groups).map(([year, list]) => ({ year, list }))
+  }, [filteredTimelineFacts])
+
+  // Мөнгөн дүн болон онцлох утгуудыг тодотгох туслах функц
+  const formatFactText = (text) => {
+    if (!text) return ''
+    const regex = /(\b\d+(?:\.\d+)?\s*(?:их наяд|тэрбум|сая|сая тонн|хувь|%|\$|USD|₮)\b)/gi
+    const parts = text.split(regex)
+    return parts.map((part, i) => {
+      if (regex.test(part)) {
+        return (
+          <span
+            key={i}
+            className="font-bold text-accent bg-accent/10 px-1 py-0.5 rounded border border-accent/20 mx-0.5"
+          >
+            {part}
+          </span>
+        )
+      }
+      return part
+    })
+  }
 
   // Автомат тоглуулагч (Timeline Auto Playback)
   useEffect(() => {
@@ -1092,113 +1256,635 @@ export default function CaseEditor() {
           </div>
         </div>
 
-        {/* Баруун талын Drawer / Inspector & Case Timeline Panel */}
-        <div className="w-80 md:w-96 border-l border-line bg-surface-1 flex flex-col shrink-0">
-          {/* Tabs */}
-          <div className="flex border-b border-line bg-surface-2/60">
-            <button
-              onClick={() => setActiveTab('case_timeline')}
-              className={`flex-1 py-2.5 text-[11px] font-mono font-bold flex items-center justify-center gap-1 border-b-2 transition ${
-                activeTab === 'case_timeline'
-                  ? 'border-accent text-accent bg-surface-1'
-                  : 'border-transparent text-dim hover:text-text'
-              }`}
+        {/* Баруун талын Drawer / Inspector & Case Timeline Panel (Өргөн тохируулгатай, томруулсан горимтой) */}
+        <div
+          style={{ width: isFullscreenDrawer ? '100%' : `${drawerWidth}px` }}
+          className={`border-l border-line bg-surface-1 flex flex-col shrink-0 relative transition-all duration-75 ${
+            isFullscreenDrawer ? 'absolute inset-0 z-50 bg-surface-1' : ''
+          }`}
+        >
+          {/* Самбарын өргөн чирэх бариул (Interactive Drag Handle) */}
+          {!isFullscreenDrawer && (
+            <div
+              onMouseDown={handleMouseDownResize}
+              className="absolute -left-1.5 top-0 bottom-0 w-3 cursor-col-resize hover:bg-accent/40 active:bg-accent transition z-30 group flex items-center justify-center select-none"
+              title="Самбарын өргөнийг чирж өөрчлөх"
             >
-              <Clock size={13} /> ХЭРГИЙН ТҮҮХ
-            </button>
-            <button
-              onClick={() => setActiveTab('inspector')}
-              className={`flex-1 py-2.5 text-[11px] font-mono font-bold flex items-center justify-center gap-1 border-b-2 transition ${
-                activeTab === 'inspector'
-                  ? 'border-accent text-accent bg-surface-1'
-                  : 'border-transparent text-dim hover:text-text'
-              }`}
-            >
-              <Info size={13} /> ИНСПЕКТОР
-            </button>
-            <button
-              onClick={() => setActiveTab('entity_timeline')}
-              disabled={!selectedNode || typeof selectedNode.id !== 'number'}
-              className={`flex-1 py-2.5 text-[11px] font-mono font-bold flex items-center justify-center gap-1 border-b-2 transition disabled:opacity-30 ${
-                activeTab === 'entity_timeline'
-                  ? 'border-accent text-accent bg-surface-1'
-                  : 'border-transparent text-dim hover:text-text'
-              }`}
-            >
-              <Activity size={13} /> СУБЪЕКТ
-            </button>
-            <button
-              onClick={() => setActiveTab('add')}
-              className={`px-3 py-2.5 text-[11px] font-mono font-bold flex items-center justify-center gap-1 border-b-2 transition ${
-                activeTab === 'add'
-                  ? 'border-accent text-accent bg-surface-1'
-                  : 'border-transparent text-dim hover:text-text'
-              }`}
-              title="Шинэ субъект холбох"
-            >
-              <Plus size={14} />
-            </button>
+              <div className="w-0.5 h-12 rounded-full bg-line group-hover:bg-accent group-active:bg-accent transition" />
+            </div>
+          )}
+
+          {/* Drawer Top Controls & Tabs */}
+          <div className="flex items-center justify-between border-b border-line bg-surface-2/70 px-2 py-1.5 shrink-0 gap-1">
+            {/* Tabs */}
+            <div className="flex items-center gap-1 overflow-x-auto min-w-0">
+              <button
+                onClick={() => setActiveTab('case_timeline')}
+                className={`px-2.5 py-1.5 text-[11px] font-mono font-bold flex items-center gap-1.5 rounded transition shrink-0 ${
+                  activeTab === 'case_timeline'
+                    ? 'bg-accent/15 text-accent border border-accent/40 shadow-sm'
+                    : 'text-dim hover:text-text hover:bg-surface-3'
+                }`}
+              >
+                <Clock size={13} /> ХЭРГИЙН ТҮҮХ ({sortedFacts.length})
+              </button>
+
+              <button
+                onClick={() => setActiveTab('inspector')}
+                className={`px-2.5 py-1.5 text-[11px] font-mono font-bold flex items-center gap-1.5 rounded transition shrink-0 ${
+                  activeTab === 'inspector'
+                    ? 'bg-accent/15 text-accent border border-accent/40 shadow-sm'
+                    : 'text-dim hover:text-text hover:bg-surface-3'
+                }`}
+              >
+                <Info size={13} /> ИНСПЕКТОР
+              </button>
+
+              <button
+                onClick={() => setActiveTab('entity_timeline')}
+                disabled={!selectedNode || typeof selectedNode.id !== 'number'}
+                className={`px-2.5 py-1.5 text-[11px] font-mono font-bold flex items-center gap-1.5 rounded transition disabled:opacity-30 shrink-0 ${
+                  activeTab === 'entity_timeline'
+                    ? 'bg-accent/15 text-accent border border-accent/40 shadow-sm'
+                    : 'text-dim hover:text-text hover:bg-surface-3'
+                }`}
+              >
+                <Activity size={13} /> СУБЪЕКТ
+              </button>
+
+              <button
+                onClick={() => setActiveTab('add')}
+                className={`px-2 py-1.5 text-[11px] font-mono font-bold flex items-center gap-1 rounded transition shrink-0 ${
+                  activeTab === 'add'
+                    ? 'bg-accent/15 text-accent border border-accent/40 shadow-sm'
+                    : 'text-dim hover:text-text hover:bg-surface-3'
+                }`}
+                title="Шинэ субъект холбох"
+              >
+                <Plus size={13} />
+              </button>
+            </div>
+
+            {/* Width Presets & Fullscreen toggle */}
+            <div className="flex items-center gap-1 pl-2 border-l border-line/60 shrink-0">
+              <button
+                onClick={() => {
+                  setIsFullscreenDrawer(false)
+                  setDrawerWidth(380)
+                }}
+                className={`px-1.5 py-0.5 text-[10px] font-mono rounded border transition ${
+                  !isFullscreenDrawer && drawerWidth <= 400
+                    ? 'bg-accent text-ink-950 font-bold border-accent'
+                    : 'text-dim hover:text-text border-line bg-surface-1'
+                }`}
+                title="Компакт өргөн (380px)"
+              >
+                380
+              </button>
+              <button
+                onClick={() => {
+                  setIsFullscreenDrawer(false)
+                  setDrawerWidth(540)
+                }}
+                className={`px-1.5 py-0.5 text-[10px] font-mono rounded border transition ${
+                  !isFullscreenDrawer && drawerWidth > 400 && drawerWidth < 680
+                    ? 'bg-accent text-ink-950 font-bold border-accent'
+                    : 'text-dim hover:text-text border-line bg-surface-1'
+                }`}
+                title="Өргөн горим (540px) - Тухтай унших"
+              >
+                540
+              </button>
+              <button
+                onClick={() => {
+                  setIsFullscreenDrawer(false)
+                  setDrawerWidth(740)
+                }}
+                className={`px-1.5 py-0.5 text-[10px] font-mono rounded border transition ${
+                  !isFullscreenDrawer && drawerWidth >= 680
+                    ? 'bg-accent text-ink-950 font-bold border-accent'
+                    : 'text-dim hover:text-text border-line bg-surface-1'
+                }`}
+                title="Хамгийн өргөн горим (740px)"
+              >
+                740
+              </button>
+
+              <button
+                onClick={() => setIsFullscreenDrawer(!isFullscreenDrawer)}
+                className={`p-1 border rounded transition ml-0.5 ${
+                  isFullscreenDrawer
+                    ? 'bg-accent text-ink-950 font-bold border-accent'
+                    : 'text-dim hover:text-accent border-line bg-surface-1'
+                }`}
+                title={isFullscreenDrawer ? 'Энгийн горим руу буцах' : 'Бүрэн дэлгэцээр унших'}
+              >
+                {isFullscreenDrawer ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+              </button>
+            </div>
           </div>
 
           {/* Tab Content */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {/* 1. Хэргийн бүрэн цаг хугацааны хэлхээс (Case Timeline) */}
+            {/* 1. Хэргийн бүрэн цаг хугацааны хэлхээс (Case Timeline & Narrative) */}
             {activeTab === 'case_timeline' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-line">
-                  <div className="text-xs font-mono font-bold text-text flex items-center gap-1.5">
-                    <Clock size={13} className="text-accent" />
-                    ОН ЦАГИЙН ДАРААЛАЛ ({sortedFacts.length})
+              <div className="space-y-4">
+                {/* 1.1 Хэргийн тойм & Оролцооны бүлэглэл */}
+                <div className="p-3.5 bg-surface-2/90 border border-line rounded-lg space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] font-mono uppercase text-dim tracking-wider">
+                        МӨРДЛӨГИЙН ХЭРГИЙН ТОЙМ
+                      </div>
+                      <h2 className="text-sm font-bold text-text font-display mt-0.5">
+                        {caseObj.title}
+                      </h2>
+                    </div>
+                    {caseObj.amount_billion && (
+                      <div className="text-right shrink-0">
+                        <div className="text-[9px] font-mono text-dim uppercase">Санхүүгийн хэмжээ</div>
+                        <div className="text-xs font-mono font-bold text-warn flex items-center justify-end gap-1">
+                          <Coins size={12} />
+                          {caseObj.amount_billion >= 1000
+                            ? `${(caseObj.amount_billion / 1000).toFixed(1)} их наяд ₮`
+                            : `${caseObj.amount_billion} тэрбум ₮`}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <span className="text-[10px] font-mono text-dim">
-                    {firstCaseDate.slice(0, 4)} — {lastCaseDate.slice(0, 4)}
-                  </span>
+
+                  {caseObj.description && (
+                    <p className="text-xs text-text/90 leading-relaxed border-t border-line/60 pt-2 font-sans">
+                      {caseObj.description}
+                    </p>
+                  )}
+
+                  {/* Гол тоглогчид / Оролцооны ангилал */}
+                  <div className="pt-2 border-t border-line/60 space-y-2">
+                    <div className="text-[10px] font-mono font-bold text-dim flex items-center justify-between">
+                      <span>ХЭРГИЙН ГОЛ ОРОЛЦОО (Дарж фактыг шүүнэ үү):</span>
+                      {(timelineRoleFilter !== 'ALL' || timelineEntityFilter !== null) && (
+                        <button
+                          onClick={() => {
+                            setTimelineRoleFilter('ALL')
+                            setTimelineEntityFilter(null)
+                          }}
+                          className="text-[10px] text-accent hover:underline flex items-center gap-0.5"
+                        >
+                          <RotateCcw size={10} /> Бүгдийг харах
+                        </button>
+                      )}
+                    </div>
+
+                    {/* 👑 Шийдвэр гаргагчид */}
+                    {keyPlayers.decisionMakers.length > 0 && (
+                      <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                        <span className="font-mono text-[10px] text-accent font-bold flex items-center gap-1 shrink-0">
+                          <Crown size={11} /> Шийдвэр гаргагчид:
+                        </span>
+                        {keyPlayers.decisionMakers.map((p) => {
+                          const isSelected = timelineEntityFilter === p.id
+                          return (
+                            <button
+                              key={p.id}
+                              onClick={() => setTimelineEntityFilter(isSelected ? null : p.id)}
+                              className={`px-2 py-0.5 rounded text-[11px] font-mono border transition ${
+                                isSelected
+                                  ? 'bg-accent text-ink-950 font-bold border-accent'
+                                  : 'bg-surface-3/80 hover:bg-surface-3 text-text border-line hover:border-accent-line'
+                              }`}
+                              title={p.note || ''}
+                            >
+                              {p.name}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {/* 💰 Хамгийн их ашиг хүртэгчид / Монопол гэрээтнүүд */}
+                    {keyPlayers.beneficiaries.length > 0 && (
+                      <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                        <span className="font-mono text-[10px] text-ok font-bold flex items-center gap-1 shrink-0">
+                          <DollarSign size={11} /> Ашиг хүртэгчид:
+                        </span>
+                        {keyPlayers.beneficiaries.map((p) => {
+                          const isSelected = timelineEntityFilter === p.id
+                          return (
+                            <button
+                              key={p.id}
+                              onClick={() => setTimelineEntityFilter(isSelected ? null : p.id)}
+                              className={`px-2 py-0.5 rounded text-[11px] font-mono border transition ${
+                                isSelected
+                                  ? 'bg-ok text-ink-950 font-bold border-ok'
+                                  : 'bg-surface-3/80 hover:bg-surface-3 text-text border-line hover:border-ok-line'
+                              }`}
+                              title={p.note || ''}
+                            >
+                              {p.name}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {/* ⚖️ Сэжигтэн, яллагдагчид */}
+                    {keyPlayers.suspects.length > 0 && (
+                      <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                        <span className="font-mono text-[10px] text-danger font-bold flex items-center gap-1 shrink-0">
+                          <Scale size={11} /> Сэжигтэн/Яллагдагч:
+                        </span>
+                        {keyPlayers.suspects.map((p) => {
+                          const isSelected = timelineEntityFilter === p.id
+                          return (
+                            <button
+                              key={p.id}
+                              onClick={() => setTimelineEntityFilter(isSelected ? null : p.id)}
+                              className={`px-2 py-0.5 rounded text-[11px] font-mono border transition ${
+                                isSelected
+                                  ? 'bg-danger text-white font-bold border-danger'
+                                  : 'bg-surface-3/80 hover:bg-surface-3 text-text border-line hover:border-danger/50'
+                              }`}
+                              title={p.note || ''}
+                            >
+                              {p.name}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <div className="space-y-2.5">
-                  {sortedFacts.map((fact, idx) => {
-                    const isPassed = !activeCutoffDate || fact.fact_date <= activeCutoffDate
-                    const isSelectedFact = selectedNode?.entity_type === 'fact' && selectedNode?.fact_id === fact.id
+                {/* 1.2 Хайлт ба шүүлтүүр */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-dim" />
+                      <input
+                        type="text"
+                        placeholder="Фактуудаас хайх (оффтейк, тооцоолол, гэрээ, шүүх, нэр)..."
+                        value={timelineSearch}
+                        onChange={(e) => setTimelineSearch(e.target.value)}
+                        className="w-full pl-8 pr-7 py-1.5 bg-surface-2 border border-line rounded text-xs text-text font-mono focus:border-accent focus:outline-none"
+                      />
+                      {timelineSearch && (
+                        <button
+                          onClick={() => setTimelineSearch('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-dim hover:text-text"
+                        >
+                          <X size={12} />
+                        </button>
+                      )}
+                    </div>
 
-                    return (
-                      <div
-                        key={fact.id}
-                        onClick={() => {
-                          const n = simNodes.current.find((sn) => sn.fact_id === fact.id)
-                          if (n) setSelectedNode(n)
-                        }}
-                        className={`p-2.5 rounded border transition cursor-pointer ${
-                          isSelectedFact
-                            ? 'bg-accent-dim/40 border-accent shadow-[0_0_12px_rgb(56_224_255/0.15)]'
-                            : isPassed
-                            ? 'bg-surface-2 border-line hover:border-accent-line'
-                            : 'bg-surface-1/40 border-line/40 opacity-40'
+                    <button
+                      onClick={() => setGroupByYear(!groupByYear)}
+                      className={`px-2.5 py-1.5 border rounded text-[11px] font-mono flex items-center gap-1 transition shrink-0 ${
+                        groupByYear
+                          ? 'bg-accent/15 text-accent border-accent/40'
+                          : 'bg-surface-2 text-dim border-line hover:text-text'
+                      }`}
+                      title="Жилээр бүлэглэх"
+                    >
+                      <Layers size={12} />
+                      <span className="hidden sm:inline">Жилээр</span>
+                    </button>
+                  </div>
+
+                  {/* Он сонгох чипүүд */}
+                  {availableYears.length > 1 && (
+                    <div className="flex items-center gap-1 overflow-x-auto pb-1 text-[11px] font-mono">
+                      <span className="text-dim shrink-0 text-[10px]">Он:</span>
+                      <button
+                        onClick={() => setTimelineYearFilter('ALL')}
+                        className={`px-2 py-0.5 rounded border transition shrink-0 ${
+                          timelineYearFilter === 'ALL'
+                            ? 'bg-accent text-ink-950 font-bold border-accent'
+                            : 'bg-surface-2 text-dim border-line hover:text-text'
                         }`}
                       >
-                        <div className="flex items-center justify-between text-[10px] font-mono text-dim mb-1">
-                          <span className="flex items-center gap-1 text-accent font-bold">
-                            <Calendar size={11} /> {fact.fact_date || 'Огноогүй'}
+                        Бүгд ({sortedFacts.length})
+                      </button>
+                      {availableYears.map((yr) => (
+                        <button
+                          key={yr}
+                          onClick={() => setTimelineYearFilter(yr)}
+                          className={`px-2 py-0.5 rounded border transition shrink-0 ${
+                            timelineYearFilter === yr
+                              ? 'bg-accent text-ink-950 font-bold border-accent'
+                              : 'bg-surface-2 text-dim border-line hover:text-text'
+                          }`}
+                        >
+                          {yr}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Идэвхтэй шүүлтүүрийн мэдээлэл */}
+                  <div className="flex items-center justify-between text-[11px] font-mono text-dim pt-1 border-t border-line/40">
+                    <span>
+                      Илэрц: <b className="text-text">{filteredTimelineFacts.length}</b> баримт
+                    </span>
+                    <span className="text-[10px]">
+                      {firstCaseDate.slice(0, 4)} — {lastCaseDate.slice(0, 4)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 1.3 Баримтуудын жагсаалт (Rich cards with visual timeline spine) */}
+                <div className="space-y-4">
+                  {filteredTimelineFacts.length === 0 ? (
+                    <div className="p-8 text-center bg-surface-2/40 border border-line rounded-lg text-dim text-xs font-mono">
+                      Шүүлтүүрт тохирох баримт олдсонгүй.
+                    </div>
+                  ) : groupByYear ? (
+                    factsGroupedByYear.map(({ year, list }) => (
+                      <div key={year} className="space-y-2.5">
+                        <div className="sticky top-0 z-10 py-1 px-2.5 bg-surface-1/95 backdrop-blur border-b border-line flex items-center justify-between text-xs font-mono font-bold text-accent">
+                          <span className="flex items-center gap-1.5">
+                            <Calendar size={13} /> {year} ОН
                           </span>
-                          <span className="text-faint">{fact.topic || fact.fact_type}</span>
+                          <span className="text-[10px] text-dim font-normal">
+                            {list.length} үйл явдал
+                          </span>
                         </div>
 
-                        <p className="text-xs text-text leading-relaxed">
-                          {fact.fact_text}
-                        </p>
+                        <div className="space-y-3 pl-2.5 border-l-2 border-line/60 ml-2">
+                          {list.map((fact) => {
+                            const isPassed = !activeCutoffDate || fact.fact_date <= activeCutoffDate
+                            const isSelectedFact =
+                              selectedNode?.entity_type === 'fact' &&
+                              selectedNode?.fact_id === fact.id
+                            const matchingLink = data?.links?.find(
+                              (l) => l.entity_id === fact.entity_id
+                            )
+                            const role = matchingLink?.role
 
-                        {fact.source_title && (
-                          <div className="mt-1.5 pt-1.5 border-t border-line/60 flex items-center justify-between text-[9px] font-mono text-dim">
-                            <span className="truncate max-w-[200px]">{fact.source_title}</span>
-                            {fact.sha256 && (
-                              <span className="text-ok flex items-center gap-0.5">
-                                <ShieldCheck size={10} /> SHA-256
-                              </span>
+                            return (
+                              <div
+                                key={fact.id}
+                                onClick={() => {
+                                  const n = simNodes.current.find((sn) => sn.fact_id === fact.id)
+                                  if (n) setSelectedNode(n)
+                                }}
+                                className={`relative p-3.5 rounded-lg border transition-all cursor-pointer group ${
+                                  isSelectedFact
+                                    ? 'bg-accent/15 border-accent shadow-[0_0_16px_rgb(56_224_255/0.2)] ring-1 ring-accent'
+                                    : isPassed
+                                    ? 'bg-surface-2/90 border-line hover:border-accent-line hover:bg-surface-2'
+                                    : 'bg-surface-1/40 border-line/40 opacity-40'
+                                }`}
+                              >
+                                <div
+                                  className={`absolute -left-[15px] top-4 w-2.5 h-2.5 rounded-full border-2 transition ${
+                                    isSelectedFact
+                                      ? 'bg-accent border-accent shadow-[0_0_8px_#38e0ff]'
+                                      : 'bg-surface-1 border-accent/60 group-hover:border-accent'
+                                  }`}
+                                />
+
+                                <div className="flex items-center justify-between flex-wrap gap-1.5 mb-2 text-[11px] font-mono">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="flex items-center gap-1 text-accent font-bold bg-accent/10 px-1.5 py-0.5 rounded border border-accent/20">
+                                      <Calendar size={11} /> {fact.fact_date || 'Огноогүй'}
+                                    </span>
+
+                                    {fact.entity_name && (
+                                      <span
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          const entNode = simNodes.current.find(
+                                            (sn) => sn.id === fact.entity_id
+                                          )
+                                          if (entNode) setSelectedNode(entNode)
+                                        }}
+                                        className={`flex items-center gap-1 px-1.5 py-0.5 rounded border transition hover:underline ${
+                                          role === 'SUSPECT'
+                                            ? 'bg-danger/10 text-danger border-danger/30'
+                                            : role === 'BENEFICIARY'
+                                            ? 'bg-ok/10 text-ok border-ok/30'
+                                            : role === 'DECISION_MAKER'
+                                            ? 'bg-accent/10 text-accent border-accent/30'
+                                            : 'bg-surface-3 text-text border-line'
+                                        }`}
+                                      >
+                                        {fact.entity_type === 'company' ? (
+                                          <Building size={11} />
+                                        ) : (
+                                          <User size={11} />
+                                        )}
+                                        <b>{fact.entity_name}</b>
+                                        {role && <span className="text-[9px] opacity-75">({role})</span>}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {fact.role_context && (
+                                    <span className="text-[10px] font-mono text-dim bg-surface-3 px-1.5 py-0.5 rounded border border-line">
+                                      {fact.role_context}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <p className="text-[13px] text-text leading-[1.65] font-sans">
+                                  {formatFactText(fact.fact_text)}
+                                </p>
+
+                                {fact.source_quote && (
+                                  <blockquote className="mt-2.5 p-2 bg-surface-1/80 border-l-2 border-accent rounded-r text-[12px] text-dim italic leading-relaxed">
+                                    <div className="flex items-start gap-1.5">
+                                      <Quote size={12} className="text-accent shrink-0 mt-0.5 opacity-80" />
+                                      <span>"{fact.source_quote}"</span>
+                                    </div>
+                                  </blockquote>
+                                )}
+
+                                {(fact.source_title || fact.source_url) && (
+                                  <div className="mt-2.5 pt-2 border-t border-line/50 flex items-center justify-between text-[10px] font-mono text-dim flex-wrap gap-1">
+                                    <div className="flex items-center gap-1.5 truncate max-w-[280px]">
+                                      {fact.source_id ? (
+                                        <Link
+                                          to={`/sources/${fact.source_id}`}
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="text-accent hover:underline truncate"
+                                          title={fact.source_title || 'Эх сурвалж үзэх'}
+                                        >
+                                          ⎘ {fact.source_title || 'Эх сурвалж'}
+                                        </Link>
+                                      ) : (
+                                        <span className="truncate">{fact.source_title}</span>
+                                      )}
+                                      {fact.source_author && (
+                                        <span className="text-faint">• {fact.source_author}</span>
+                                      )}
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5 ml-auto">
+                                      {fact.source_url && (
+                                        <a
+                                          href={fact.source_url}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="text-dim hover:text-accent flex items-center gap-0.5 text-[9px] bg-surface-1 px-1.5 py-0.5 rounded border border-line"
+                                          title="Анхдагч холбоос нээх"
+                                        >
+                                          Гадаад ↗
+                                        </a>
+                                      )}
+                                      {fact.sha256 && (
+                                        <span className="text-ok flex items-center gap-0.5 text-[9px]">
+                                          <ShieldCheck size={10} /> SHA-256
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="space-y-3 pl-2.5 border-l-2 border-line/60 ml-2">
+                      {filteredTimelineFacts.map((fact) => {
+                        const isPassed = !activeCutoffDate || fact.fact_date <= activeCutoffDate
+                        const isSelectedFact =
+                          selectedNode?.entity_type === 'fact' &&
+                          selectedNode?.fact_id === fact.id
+                        const matchingLink = data?.links?.find(
+                          (l) => l.entity_id === fact.entity_id
+                        )
+                        const role = matchingLink?.role
+
+                        return (
+                          <div
+                            key={fact.id}
+                            onClick={() => {
+                              const n = simNodes.current.find((sn) => sn.fact_id === fact.id)
+                              if (n) setSelectedNode(n)
+                            }}
+                            className={`relative p-3.5 rounded-lg border transition-all cursor-pointer group ${
+                              isSelectedFact
+                                ? 'bg-accent/15 border-accent shadow-[0_0_16px_rgb(56_224_255/0.2)] ring-1 ring-accent'
+                                : isPassed
+                                ? 'bg-surface-2/90 border-line hover:border-accent-line hover:bg-surface-2'
+                                : 'bg-surface-1/40 border-line/40 opacity-40'
+                            }`}
+                          >
+                            <div
+                              className={`absolute -left-[15px] top-4 w-2.5 h-2.5 rounded-full border-2 transition ${
+                                isSelectedFact
+                                  ? 'bg-accent border-accent shadow-[0_0_8px_#38e0ff]'
+                                  : 'bg-surface-1 border-accent/60 group-hover:border-accent'
+                              }`}
+                            />
+
+                            <div className="flex items-center justify-between flex-wrap gap-1.5 mb-2 text-[11px] font-mono">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="flex items-center gap-1 text-accent font-bold bg-accent/10 px-1.5 py-0.5 rounded border border-accent/20">
+                                  <Calendar size={11} /> {fact.fact_date || 'Огноогүй'}
+                                </span>
+
+                                {fact.entity_name && (
+                                  <span
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      const entNode = simNodes.current.find(
+                                        (sn) => sn.id === fact.entity_id
+                                      )
+                                      if (entNode) setSelectedNode(entNode)
+                                    }}
+                                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded border transition hover:underline ${
+                                      role === 'SUSPECT'
+                                        ? 'bg-danger/10 text-danger border-danger/30'
+                                        : role === 'BENEFICIARY'
+                                        ? 'bg-ok/10 text-ok border-ok/30'
+                                        : role === 'DECISION_MAKER'
+                                        ? 'bg-accent/10 text-accent border-accent/30'
+                                        : 'bg-surface-3 text-text border-line'
+                                    }`}
+                                  >
+                                    {fact.entity_type === 'company' ? (
+                                      <Building size={11} />
+                                    ) : (
+                                      <User size={11} />
+                                    )}
+                                    <b>{fact.entity_name}</b>
+                                    {role && <span className="text-[9px] opacity-75">({role})</span>}
+                                  </span>
+                                )}
+                              </div>
+
+                              {fact.role_context && (
+                                <span className="text-[10px] font-mono text-dim bg-surface-3 px-1.5 py-0.5 rounded border border-line">
+                                  {fact.role_context}
+                                </span>
+                              )}
+                            </div>
+
+                            <p className="text-[13px] text-text leading-[1.65] font-sans">
+                              {formatFactText(fact.fact_text)}
+                            </p>
+
+                            {fact.source_quote && (
+                              <blockquote className="mt-2.5 p-2 bg-surface-1/80 border-l-2 border-accent rounded-r text-[12px] text-dim italic leading-relaxed">
+                                <div className="flex items-start gap-1.5">
+                                  <Quote size={12} className="text-accent shrink-0 mt-0.5 opacity-80" />
+                                  <span>"{fact.source_quote}"</span>
+                                </div>
+                              </blockquote>
+                            )}
+
+                            {(fact.source_title || fact.source_url) && (
+                              <div className="mt-2.5 pt-2 border-t border-line/50 flex items-center justify-between text-[10px] font-mono text-dim flex-wrap gap-1">
+                                <div className="flex items-center gap-1.5 truncate max-w-[280px]">
+                                  {fact.source_id ? (
+                                    <Link
+                                      to={`/sources/${fact.source_id}`}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="text-accent hover:underline truncate"
+                                      title={fact.source_title || 'Эх сурвалж үзэх'}
+                                    >
+                                      ⎘ {fact.source_title || 'Эх сурвалж'}
+                                    </Link>
+                                  ) : (
+                                    <span className="truncate">{fact.source_title}</span>
+                                  )}
+                                  {fact.source_author && (
+                                    <span className="text-faint">• {fact.source_author}</span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-1.5 ml-auto">
+                                  {fact.source_url && (
+                                    <a
+                                      href={fact.source_url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="text-dim hover:text-accent flex items-center gap-0.5 text-[9px] bg-surface-1 px-1.5 py-0.5 rounded border border-line"
+                                      title="Анхдагч холбоос нээх"
+                                    >
+                                      Гадаад ↗
+                                    </a>
+                                  )}
+                                  {fact.sha256 && (
+                                    <span className="text-ok flex items-center gap-0.5 text-[9px]">
+                                      <ShieldCheck size={10} /> SHA-256
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
                             )}
                           </div>
-                        )}
-                      </div>
-                    )
-                  })}
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

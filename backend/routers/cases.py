@@ -107,7 +107,7 @@ def get_case_subgraph(slug: str, db: Session = Depends(get_db)) -> Dict[str, Any
     if fact_ids:
         fcts = (
             db.query(models.Fact)
-            .options(joinedload(models.Fact.source))
+            .options(joinedload(models.Fact.source), joinedload(models.Fact.entity))
             .filter(models.Fact.id.in_(fact_ids))
             .all()
         )
@@ -116,15 +116,19 @@ def get_case_subgraph(slug: str, db: Session = Depends(get_db)) -> Dict[str, Any
                 "id": f.id,
                 "fact_id": f.fact_id,
                 "entity_id": f.entity_id,
+                "entity_name": f.entity.name if f.entity else None,
+                "entity_type": f.entity.entity_type if f.entity else None,
                 "fact_type": f.fact_type,
                 "fact_date": str(f.fact_date) if f.fact_date else None,
                 "fact_text": f.fact_text,
                 "source_quote": f.source_quote,
+                "role_context": f.role_context,
                 "topic": f.topic,
                 "tags": f.tags,
                 "source_title": f.source_title,
                 "source_url": f.source_url,
                 "source_id": f.source_id,
+                "source_author": f.source.author if f.source else None,
                 "sha256": f.source.sha256_hash if f.source else None,
             })
 

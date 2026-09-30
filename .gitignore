@@ -13,6 +13,7 @@ backend/.env
 
 # Түр файлууд
 tools/*.txt
+tools/*.json
 tools/ministers_log*.txt
 backend/backups/
 tools/coal_scrapes/
